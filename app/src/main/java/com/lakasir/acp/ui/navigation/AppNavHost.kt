@@ -11,6 +11,7 @@ import androidx.navigation.toRoute
 import com.lakasir.acp.ui.chat.ChatPlaceholder
 import com.lakasir.acp.ui.chat.ChatScreen
 import com.lakasir.acp.ui.connection.ConnectionScreen
+import com.lakasir.acp.ui.permission.PermissionHost
 import com.lakasir.acp.ui.sessions.SessionsScreen
 
 @Composable
@@ -36,5 +37,6 @@ fun AppNavHost(widthSizeClass: WindowWidthSizeClass) {
                 ChatScreen(sessionId = entry.toRoute<Chat>().sessionId, onBack = { navController.popBackStack() })
             }
         }
+        PermissionHost()
     }
 }

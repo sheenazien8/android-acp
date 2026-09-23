@@ -55,4 +55,7 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - WebFetch for ACP schema re-checks
 
 ## Implementation
-<!-- Write you've done in here -->
+- Plans 01–09 implemented, one commit each (see each plan's Implementation section for details and any deviations)
+- 53 JVM unit tests, all passing
+- Debug APK installed over adb on a Pixel 7a (Android 15); the app launches and the Connections screen renders
+- Not yet verified: end-to-end against a real ACP bridge (connect → initialize → new session → prompt streaming → tool calls → permission → cancel)

@@ -8,12 +8,14 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lakasir.acp.AcpApp
 import com.lakasir.acp.di.AppContainer
 import com.lakasir.acp.ui.connection.ConnectionViewModel
+import com.lakasir.acp.ui.permission.PermissionViewModel
 import com.lakasir.acp.ui.sessions.SessionsViewModel
 
 object AppViewModelProvider {
     val Factory = viewModelFactory {
         initializer { ConnectionViewModel(container().repository) }
         initializer { SessionsViewModel(createSavedStateHandle(), container().repository) }
+        initializer { PermissionViewModel(container().repository) }
     }
 }
 
