@@ -37,4 +37,15 @@
 - WebFetch agentclientprotocol.com if a field name is in doubt
 
 ## Implementation
-<!-- Write you've done in here -->
+- `acp/AcpMethods.kt`: method names, `/acp` path, protocol version 1, `SessionUpdateKind`, `ToolCallStatus`, `PermissionOptionKind`, JSON-RPC error codes (the only KDoc in the layer marks this as the file to edit if the schema changes)
+- `acp/AcpMessage.kt`: sealed `Request` / `Response` / `ErrorResponse` / `Notification` with `JsonElement` ids, params and results; `parse()` throws `AcpParseException`; `encode()` always adds `"jsonrpc":"2.0"`
+- `acp/AcpTransport.kt`: `AcpTransport` interface (so tests can use a fake) + `OkHttpAcpTransport` (unlimited channel for incoming frames, `TransportState` StateFlow, ignores callbacks from stale sockets, 20s ping, 10s connect timeout)
+- `acp/AcpEvent.kt`: `AcpEvent` (MessageChunk, ThoughtChunk, UserMessageChunk, ToolCallStarted, ToolCallUpdated, Plan, Unknown, PermissionRequest) with `raw` params kept for `rawJson`; `ToolCallInfo`, `ToolContent` (Text/Diff/Terminal/Other), `PlanEntry`, `PermissionOption`; `AcpEventParser`
+- `acp/AcpException.kt`: NotConnected, Disconnected, Timeout, Rpc, InvalidResponse
+- `acp/AcpClient.kt`: id correlation, 30s default timeout (load 120s, prompt none), `initialize` (fs/terminal capabilities false), `newSession`, `loadSession`, `prompt` → stopReason, `cancel`, `respondPermission` (selected/cancelled), `-32601` for unsupported agent→client requests, fails pending requests on disconnect, `events` + `protocolErrors` SharedFlows
+- `acp/AcpSession.kt`: per-session `events` (filtered by `sessionId`), `prompt`, `cancel`
+- Changes from plan:
+  - No `TurnEnded` event: the `session/prompt` response *is* the end of the turn, so the caller awaits `prompt()` directly
+  - Parse errors go to `AcpClient.protocolErrors` instead of an `AcpEvent.ProtocolError`, because they may not belong to any session
+- Tests (28, all pass): `AcpMessageTest`, `AcpEventParserTest`, `AcpClientTest` with `FakeTransport`
+- Verified: `./gradlew testDebugUnitTest` OK
