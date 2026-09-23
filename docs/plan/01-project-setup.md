@@ -7,10 +7,11 @@
 ## Goals
 - Gradle Kotlin DSL: `settings.gradle.kts`, root `build.gradle.kts`, `gradle/libs.versions.toml`, `gradle.properties`, Gradle wrapper 8.10.2
 - Single `app` module, namespace `com.lakasir.acp`, minSdk 26, compile/targetSdk 35, Kotlin 2.x with Compose compiler plugin, kotlinx.serialization plugin, KSP for Room
-- Dependencies: Compose BOM + Material 3, Navigation Compose, Lifecycle ViewModel/Runtime Compose, OkHttp, kotlinx.serialization-json, kotlinx.coroutines, Room (runtime, ktx, compiler), JUnit + coroutines-test
+- Dependencies: Compose BOM + Material 3, `material3-window-size-class`, `material-icons-extended` (or core icons only if size matters), Navigation Compose 2.8+ (type-safe `@Serializable` routes), Lifecycle ViewModel/Runtime Compose, OkHttp, kotlinx.serialization-json, kotlinx.coroutines, Room (runtime, ktx, compiler), JUnit + coroutines-test
+- `MainActivity` calls `enableEdgeToEdge()`; `windowSoftInputMode="adjustResize"` so the chat input can use `imePadding()`
 - `AndroidManifest.xml`: `INTERNET` permission, `usesCleartextTraffic="true"`, `AcpApp` application class, `MainActivity`
 - `AcpApp` holding `di/AppContainer` (empty skeleton, filled in later plans)
-- `MainActivity` with an empty `NavHost` placeholder
+- `MainActivity` with an empty `NavHost` placeholder using type-safe routes (`@Serializable object Connections`, `data class Sessions(profileId)`, `data class Chat(sessionId)`) in `ui/navigation/Routes.kt`
 - `.gitignore`, `local.properties` pointing at `~/android-sdk`
 
 ## Assumptions

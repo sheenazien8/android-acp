@@ -36,6 +36,10 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - Package name `com.lakasir.acp`
 - Code in English, no inline comments (global rule); protocol-adjustable names live only in `AcpMethods.kt` / `AcpEvent` parser
 - Single active connection at a time; multiple profiles stored
+- UI follows the project skill `mobile-android-design` (Material 3 + Compose), with these project-specific deviations:
+  - Dynamic color (Material You) is **off**: the fixed brand palette and single teal accent from the spec win over wallpaper colors
+  - Skill's rounded 12–16dp cards/avatars are **not** used; blocks are flat with a 4dp radius and role-colored left border (spec's "tool, not chatbot" direction)
+  - No bottom nav / drawer: the app is a linear stack (Connections → Sessions → Chat)
 
 ## Notes
 - Out of scope / TODO: mDNS discovery, TLS/auth, fs/terminal client capabilities, voice, background notifications
@@ -46,6 +50,7 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - Manual end-to-end against a LAN bridge after plan 09
 
 ## Tools / Skills
+- Skill `mobile-android-design` (@.claude/skills/mobile-android-design) — load before plans 02, 06, 07, 08, 09; references: `material3-theming.md`, `android-navigation.md`, `compose-components.md`
 - Bash: `./gradlew`
 - WebFetch for ACP schema re-checks
 

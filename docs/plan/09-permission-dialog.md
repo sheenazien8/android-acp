@@ -6,7 +6,9 @@
 
 ## Goals
 - Modal dialog shown when `pendingPermission` belongs to the open session (or globally from any screen, with the session title)
-- Shows tool call title/kind, raw input in mono, and one button per agent-provided option (Allow / Allow Always / Deny mapped from `allow_once` / `allow_always` / `reject_*`)
+- Built on M3 `AlertDialog` (icon + title + scrollable text), not a custom modal
+- Shows tool call title/kind, raw input in mono (scrollable, max height), and one button per agent-provided option (Allow / Allow Always / Deny mapped from `allow_once` / `allow_always` / `reject_*`)
+- Button styles: `Button` (accent) for allow_once, `FilledTonalButton` for allow_always, `OutlinedButton` with error color for reject; buttons stacked vertically when > 2 options
 - Button → `answerPermission(optionId)` → JSON-RPC response `{outcome:{outcome:"selected", optionId}}`
 - Dismiss without choice → `{outcome:{outcome:"cancelled"}}`
 - Record the request and the chosen option as a `permission_request` message in Room
@@ -21,6 +23,7 @@
 - Manual end-to-end against bridge
 
 ## Tools / Skills
+- Skill `mobile-android-design` → `references/compose-components.md` (Alert Dialog)
 - Bash: `./gradlew`
 
 ## Implementation
