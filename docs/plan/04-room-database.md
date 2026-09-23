@@ -25,4 +25,12 @@
 - Bash: `./gradlew assembleDebug`
 
 ## Implementation
-<!-- Write you've done in here -->
+- `data/local/Entities.kt`: `ConnectionProfileEntity`, `SessionEntity` (FK cascade, indexes on `connectionProfileId` and `remoteSessionId`), `MessageEntity` (FK cascade, indexes on `sessionId` and `(sessionId, toolCallId)`), `SessionSummary` (session + last text preview)
+- Enums: `SessionStatus` (ACTIVE/CLOSED/ERROR), `MessageRole` (USER/AGENT/SYSTEM/TOOL), `MessageType` (TEXT/THOUGHT/TOOL_CALL/PLAN/PERMISSION_REQUEST/ERROR)
+- `data/local/Daos.kt`: `ConnectionProfileDao`, `SessionDao` (`observeSummaries` with a preview subquery), `MessageDao` (`appendContent` in SQL for streaming chunks, `findToolCall`, `last`)
+- `data/local/AppDatabase.kt` v1 with `exportSchema = true`; `Migrations.kt` with empty `ALL`; schema at `app/schemas/.../1.json`
+- `AppContainer.database` (lazy)
+- Changes from plan:
+  - No custom TypeConverters: Room stores enums by name out of the box
+  - No separate `tool_result` / `diff` types: a tool call is one `TOOL_CALL` row updated in place, with its output and diffs in `content`; added `THOUGHT` and `PLAN`
+- Verified: `./gradlew assembleDebug` OK, schema JSON generated
