@@ -2,6 +2,7 @@ package com.lakasir.acp.data.repository
 
 import android.util.Log
 import com.lakasir.acp.acp.AcpClient
+import com.lakasir.acp.acp.AcpClientFactory
 import com.lakasir.acp.acp.AcpEvent
 import com.lakasir.acp.acp.AcpException
 import com.lakasir.acp.acp.TransportState
@@ -29,12 +30,11 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.coroutineContext
 
 class AcpRepository(
     database: AppDatabase,
-    private val client: AcpClient,
+    private val clientFactory: AcpClientFactory,
     private val scope: CoroutineScope,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
@@ -42,8 +42,8 @@ class AcpRepository(
     private val sessionDao = database.sessionDao()
     private val messageDao = database.messageDao()
 
-    private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
-    val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+    private val _connectionStates = MutableStateFlow<Map<Long, ConnectionState>>(emptyMap())
+    val connectionStates: StateFlow<Map<Long, ConnectionState>> = _connectionStates.asStateFlow()
 
     private val _busySessions = MutableStateFlow<Set<Long>>(emptySet())
     val busySessions: StateFlow<Set<Long>> = _busySessions.asStateFlow()
@@ -54,14 +54,10 @@ class AcpRepository(
     private val _pendingPermissions = MutableStateFlow<List<PendingPermission>>(emptyList())
     val pendingPermissions: StateFlow<List<PendingPermission>> = _pendingPermissions.asStateFlow()
 
-    private var connectJob: Job? = null
-    private val loadingRemoteIds = ConcurrentHashMap.newKeySet<String>()
+    private val clients = mutableMapOf<Long, AcpClient>()
+    private val connectJobs = mutableMapOf<Long, Job>()
+    private val loadingRemoteIds = mutableMapOf<Long, MutableSet<String>>()
     private val writeMutex = Mutex()
-
-    init {
-        scope.launch { client.events.collect(::handleEvent) }
-        scope.launch { client.protocolErrors.collect { Log.w(TAG, it) } }
-    }
 
     fun observeProfiles(): Flow<List<ConnectionProfileEntity>> = profileDao.observeAll()
     fun observeProfile(id: Long): Flow<ConnectionProfileEntity?> = profileDao.observe(id)
@@ -78,7 +74,7 @@ class AcpRepository(
         }
 
     suspend fun deleteProfile(profile: ConnectionProfileEntity) {
-        if (_connectionState.value.profileId == profile.id) disconnect()
+        disconnect(profile.id)
         profileDao.delete(profile)
     }
 
@@ -87,21 +83,30 @@ class AcpRepository(
     }
 
     fun connect(profile: ConnectionProfileEntity) {
-        connectJob?.cancel()
-        client.disconnect()
-        connectJob = scope.launch { runConnection(profile) }
+        disconnect(profile.id)
+        val client = clientFactory.create(scope)
+        clients[profile.id] = client
+        loadingRemoteIds[profile.id] = mutableSetOf()
+        scope.launch { client.events.collect { event -> handleEvent(profile.id, event) } }
+        scope.launch { client.protocolErrors.collect { Log.w(TAG, it) } }
+        connectJobs[profile.id] = scope.launch { runConnection(profile, client) }
+    }
+
+    fun disconnect(profileId: Long) {
+        connectJobs.remove(profileId)?.cancel()
+        clients.remove(profileId)?.disconnect()
+        loadingRemoteIds.remove(profileId)
+        scope.launch { clearProfileConnectionState(profileId) }
     }
 
     fun disconnect() {
-        connectJob?.cancel()
-        connectJob = null
-        client.disconnect()
-        onConnectionLost()
-        _connectionState.value = ConnectionState.Disconnected
+        val ids = clients.keys.toList()
+        ids.forEach { disconnect(it) }
     }
 
     suspend fun createSession(profileId: Long): Long {
         val profile = requireConnectedProfile(profileId)
+        val client = clients[profileId] ?: throw AcpException.NotConnected()
         val remoteId = client.newSession(profile.cwd)
         val now = clock()
         val id = sessionDao.insert(
@@ -121,22 +126,24 @@ class AcpRepository(
         if (localId in _attachedSessions.value) return
         val session = sessionDao.get(localId) ?: return
         val profile = connectedProfileOrNull(session.connectionProfileId) ?: return
+        val client = clients[session.connectionProfileId] ?: return
         if (client.agentInfo?.loadSession != true) return
 
-        loadingRemoteIds += session.remoteSessionId
+        loadingRemoteIds.getOrPut(session.connectionProfileId) { mutableSetOf() } += session.remoteSessionId
         try {
             client.loadSession(session.remoteSessionId, profile.cwd)
             _attachedSessions.update { it + localId }
         } catch (e: AcpException) {
             insertMessage(localId, MessageRole.SYSTEM, MessageType.ERROR, "Could not resume session: ${e.message}")
         } finally {
-            loadingRemoteIds -= session.remoteSessionId
+            loadingRemoteIds[session.connectionProfileId]?.remove(session.remoteSessionId)
         }
     }
 
     fun sendPrompt(localId: Long, text: String) {
         scope.launch {
             val session = sessionDao.get(localId) ?: return@launch
+            val client = clients[session.connectionProfileId] ?: return@launch
             insertMessage(localId, MessageRole.USER, MessageType.TEXT, text)
             if (session.title == DEFAULT_TITLE) sessionDao.updateTitle(localId, text.lineSequence().first().take(60))
             _busySessions.update { it + localId }
@@ -156,12 +163,15 @@ class AcpRepository(
 
     suspend fun cancel(localId: Long) {
         val session = sessionDao.get(localId) ?: return
+        val client = clients[session.connectionProfileId] ?: return
         _pendingPermissions.value.filter { it.localSessionId == localId }.forEach { answerPermission(it, null) }
         client.cancel(session.remoteSessionId)
     }
 
     suspend fun answerPermission(pending: PendingPermission, optionId: String?) {
         _pendingPermissions.update { list -> list.filterNot { it.request.requestId == pending.request.requestId } }
+        val profileId = sessionDao.get(pending.localSessionId)?.connectionProfileId ?: return
+        val client = clients[profileId] ?: return
         client.respondPermission(pending.request.requestId, optionId)
         val choice = pending.request.options.firstOrNull { it.optionId == optionId }?.name ?: "Cancelled"
         writeMutex.withLock {
@@ -171,10 +181,10 @@ class AcpRepository(
         }
     }
 
-    private suspend fun runConnection(profile: ConnectionProfileEntity) {
+    private suspend fun runConnection(profile: ConnectionProfileEntity, client: AcpClient) {
         var attempt = 0
         while (coroutineContext.isActive) {
-            _connectionState.value = ConnectionState.Connecting(profile.id, attempt)
+            updateConnectionState(profile.id, ConnectionState.Connecting(profile.id, attempt))
             client.connect(profile.host, profile.port)
             var reason = "Connection closed"
             val opened = client.state.first { it != TransportState.Connecting }
@@ -183,7 +193,7 @@ class AcpRepository(
                     val agent = client.initialize()
                     profileDao.touchLastConnected(profile.id, clock())
                     attempt = 0
-                    _connectionState.value = ConnectionState.Connected(profile.id, agent)
+                    updateConnectionState(profile.id, ConnectionState.Connected(profile.id, agent))
                     client.state.first { it != TransportState.Connected }
                 } catch (e: AcpException) {
                     reason = "Initialize failed: ${e.message}"
@@ -191,26 +201,35 @@ class AcpRepository(
             } else if (opened is TransportState.Failed) {
                 reason = opened.reason
             }
-            onConnectionLost()
+            clearProfileConnectionState(profile.id)
             client.disconnect()
             attempt++
             val backoff = backoffMs(attempt)
-            _connectionState.value = ConnectionState.Error(profile.id, reason, backoff)
+            updateConnectionState(profile.id, ConnectionState.Error(profile.id, reason, backoff))
             delay(backoff)
         }
     }
 
-    private fun onConnectionLost() {
-        _busySessions.value = emptySet()
-        _attachedSessions.value = emptySet()
-        _pendingPermissions.value = emptyList()
-        loadingRemoteIds.clear()
+    private suspend fun clearProfileConnectionState(profileId: Long) {
+        val affected = sessionIdsForProfile(profileId)
+        _busySessions.update { it - affected }
+        _attachedSessions.update { it - affected }
+        _pendingPermissions.update { list -> list.filterNot { it.localSessionId in affected } }
+        loadingRemoteIds[profileId]?.clear()
+        updateConnectionState(profileId, ConnectionState.Disconnected)
     }
 
-    private suspend fun handleEvent(event: AcpEvent) {
+    private suspend fun sessionIdsForProfile(profileId: Long): Set<Long> =
+        sessionDao.observeSummaries(profileId).first().map { it.session.id }.toSet()
+
+    private fun updateConnectionState(profileId: Long, state: ConnectionState) {
+        _connectionStates.update { it + (profileId to state) }
+    }
+
+    private suspend fun handleEvent(profileId: Long, event: AcpEvent) {
         try {
-            if (event !is AcpEvent.PermissionRequest && event.sessionId in loadingRemoteIds) return
-            val localId = localSessionId(event.sessionId) ?: return
+            if (event !is AcpEvent.PermissionRequest && event.sessionId in (loadingRemoteIds[profileId] ?: emptySet())) return
+            val localId = localSessionId(profileId, event.sessionId) ?: return
             writeMutex.withLock { persist(localId, event) }
             sessionDao.touch(localId, clock())
         } catch (e: CancellationException) {
@@ -302,8 +321,7 @@ class AcpRepository(
         )
     )
 
-    private suspend fun localSessionId(remoteId: String): Long? {
-        val profileId = _connectionState.value.profileId ?: return null
+    private suspend fun localSessionId(profileId: Long, remoteId: String): Long? {
         return sessionDao.findByRemoteId(profileId, remoteId)?.id
     }
 
@@ -311,7 +329,7 @@ class AcpRepository(
         connectedProfileOrNull(profileId) ?: throw AcpException.NotConnected()
 
     private suspend fun connectedProfileOrNull(profileId: Long): ConnectionProfileEntity? {
-        val state = _connectionState.value
+        val state = _connectionStates.value[profileId]
         if (state !is ConnectionState.Connected || state.profileId != profileId) return null
         return profileDao.get(profileId)
     }

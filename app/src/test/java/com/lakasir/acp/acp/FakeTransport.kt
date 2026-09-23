@@ -4,6 +4,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -13,6 +14,8 @@ class FakeTransport : AcpTransport {
     override val incoming: Flow<String> = channel.receiveAsFlow()
     override val state = MutableStateFlow<TransportState>(TransportState.Disconnected)
     val sent = mutableListOf<String>()
+    private val _sentFlow = MutableStateFlow<List<String>>(emptyList())
+    val sentFlow: StateFlow<List<String>> = _sentFlow.asStateFlow()
 
     override fun connect(url: String) {
         state.value = TransportState.Connected
@@ -21,6 +24,7 @@ class FakeTransport : AcpTransport {
     override fun send(text: String): Boolean {
         if (state.value != TransportState.Connected) return false
         sent += text
+        _sentFlow.value = sent.toList()
         return true
     }
 

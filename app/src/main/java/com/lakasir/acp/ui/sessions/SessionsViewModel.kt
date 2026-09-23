@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -29,7 +30,10 @@ class SessionsViewModel(
     val sessions: StateFlow<List<SessionSummary>?> = repository.observeSessions(profileId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    val connectionState: StateFlow<ConnectionState> = repository.connectionState
+    val connectionState: StateFlow<ConnectionState> = repository.connectionStates
+        .map { it[profileId] ?: ConnectionState.Disconnected }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionState.Disconnected)
+
     val busySessions: StateFlow<Set<Long>> = repository.busySessions
 
     private val _creating = MutableStateFlow(false)
@@ -57,6 +61,10 @@ class SessionsViewModel(
 
     fun connect() {
         profile.value?.let(repository::connect)
+    }
+
+    fun disconnect() {
+        repository.disconnect(profileId)
     }
 
     fun deleteSession(id: Long) {

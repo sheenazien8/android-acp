@@ -21,12 +21,26 @@ import com.lakasir.acp.ui.theme.AcpTheme
 
 @Composable
 fun ConnectionStatusIndicator(
+    states: Map<Long, ConnectionState>,
+    modifier: Modifier = Modifier,
+) {
+    val summary = summarize(states)
+    StatusRow(summary.label, summary.color, modifier)
+}
+
+@Composable
+fun ConnectionStatusIndicator(
     state: ConnectionState,
     modifier: Modifier = Modifier,
     profileId: Long? = null,
 ) {
     val scoped = if (profileId != null && state.profileId != profileId) ConnectionState.Disconnected else state
     val (color, label) = statusAppearance(scoped)
+    StatusRow(label, color, modifier)
+}
+
+@Composable
+private fun StatusRow(label: String, color: Color, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .padding(horizontal = 12.dp)
@@ -36,6 +50,34 @@ fun ConnectionStatusIndicator(
     ) {
         Box(Modifier.size(8.dp).background(color, CircleShape))
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private data class StatusSummary(val label: String, val color: Color)
+
+@Composable
+private fun summarize(states: Map<Long, ConnectionState>): StatusSummary {
+    if (states.isEmpty()) {
+        val (color, label) = statusAppearance(ConnectionState.Disconnected)
+        return StatusSummary(label, color)
+    }
+    val connected = states.values.count { it is ConnectionState.Connected }
+    val connecting = states.values.count { it is ConnectionState.Connecting }
+    val error = states.values.count { it is ConnectionState.Error }
+    return when {
+        connected > 0 && connecting == 0 && error == 0 -> StatusSummary(
+            if (connected == 1) "Connected" else "$connected connected",
+            MaterialTheme.colorScheme.primary,
+        )
+        error > 0 && connected == 0 && connecting == 0 -> StatusSummary(
+            if (error == 1) "Retrying" else "$error retrying",
+            MaterialTheme.colorScheme.error,
+        )
+        connecting > 0 -> StatusSummary(
+            if (connecting == 1) "Connecting" else "$connecting connecting",
+            AcpTheme.extended.warning,
+        )
+        else -> StatusSummary("Connecting", AcpTheme.extended.warning)
     }
 }
 

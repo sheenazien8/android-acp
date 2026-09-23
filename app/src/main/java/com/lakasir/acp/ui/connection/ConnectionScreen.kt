@@ -59,7 +59,7 @@ fun ConnectionScreen(
     viewModel: ConnectionViewModel = viewModel(factory = AppViewModelProvider.Factory),
 ) {
     val profiles by viewModel.profiles.collectAsStateWithLifecycle()
-    val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
+    val connectionStates by viewModel.connectionStates.collectAsStateWithLifecycle()
     val form by viewModel.form.collectAsStateWithLifecycle()
     val openProfile by viewModel.openProfile.collectAsStateWithLifecycle()
 
@@ -72,7 +72,7 @@ fun ConnectionScreen(
 
     ConnectionContent(
         profiles = profiles,
-        connectionState = connectionState,
+        connectionStates = connectionStates,
         onAdd = viewModel::newProfile,
         onOpen = { onOpenProfile(it.id) },
         onEdit = viewModel::editProfile,
@@ -95,12 +95,12 @@ fun ConnectionScreen(
 @Composable
 fun ConnectionContent(
     profiles: List<ConnectionProfileEntity>?,
-    connectionState: ConnectionState,
+    connectionStates: Map<Long, ConnectionState>,
     onAdd: () -> Unit,
     onOpen: (ConnectionProfileEntity) -> Unit,
     onEdit: (ConnectionProfileEntity) -> Unit,
     onConnect: (ConnectionProfileEntity) -> Unit,
-    onDisconnect: () -> Unit,
+    onDisconnect: (ConnectionProfileEntity) -> Unit,
     onDelete: (ConnectionProfileEntity) -> Unit,
 ) {
     var pendingDelete by remember { mutableStateOf<ConnectionProfileEntity?>(null) }
@@ -109,7 +109,7 @@ fun ConnectionContent(
         topBar = {
             TopAppBar(
                 title = { Text("Connections") },
-                actions = { ConnectionStatusIndicator(connectionState) },
+                actions = { ConnectionStatusIndicator(connectionStates) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
@@ -135,11 +135,11 @@ fun ConnectionContent(
                         SwipeToDelete(onDeleteRequest = { pendingDelete = profile }) {
                             ProfileRow(
                                 profile = profile,
-                                connectionState = connectionState,
+                                connectionState = connectionStates[profile.id] ?: ConnectionState.Disconnected,
                                 onOpen = { onOpen(profile) },
                                 onEdit = { onEdit(profile) },
                                 onConnect = { onConnect(profile) },
-                                onDisconnect = onDisconnect,
+                                onDisconnect = { onDisconnect(profile) },
                             )
                         }
                     }
@@ -173,8 +173,7 @@ private fun ProfileRow(
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
-    val isActive = connectionState.profileId == profile.id
-    val isConnected = isActive && connectionState is ConnectionState.Connected
+    val isConnected = connectionState is ConnectionState.Connected
     Surface(
         onClick = onOpen,
         shape = MaterialTheme.shapes.small,
@@ -200,22 +199,22 @@ private fun ProfileRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                ProfileStatusLine(profile, connectionState.takeIf { isActive })
+                ProfileStatusLine(profile, connectionState)
             }
             IconButton(onClick = onEdit) {
                 Icon(Icons.Outlined.Edit, contentDescription = "Edit ${profile.name}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (isActive) {
-                OutlinedButton(onClick = onDisconnect) { Text("Disconnect") }
-            } else {
+            if (connectionState is ConnectionState.Disconnected) {
                 FilledTonalButton(onClick = onConnect) { Text("Connect") }
+            } else {
+                OutlinedButton(onClick = onDisconnect) { Text("Disconnect") }
             }
         }
     }
 }
 
 @Composable
-private fun ProfileStatusLine(profile: ConnectionProfileEntity, state: ConnectionState?) {
+private fun ProfileStatusLine(profile: ConnectionProfileEntity, state: ConnectionState) {
     val style = MaterialTheme.typography.bodySmall
     when (state) {
         is ConnectionState.Error -> Text(
@@ -235,7 +234,7 @@ private fun ProfileStatusLine(profile: ConnectionProfileEntity, state: Connectio
             style = style,
             color = AcpTheme.extended.accentText,
         )
-        else -> profile.lastConnectedAt?.let {
+        ConnectionState.Disconnected -> profile.lastConnectedAt?.let {
             Text("Last connected ${relativeTime(it)}", style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -246,13 +245,18 @@ private val previewProfiles = listOf(
     ConnectionProfileEntity(2, "Build box", "192.168.1.42", 9000, "/srv/repo", 0, null),
 )
 
+private val previewStates = mapOf(
+    1L to ConnectionState.Connected(1, com.lakasir.acp.acp.AgentInfo(1, "dev-bridge", "0.4.0", true)),
+    2L to ConnectionState.Error(2, "Failed to connect to /192.168.1.42:9000", 4_000),
+)
+
 @Preview(name = "Dark", uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 private fun ConnectionDarkPreview() {
     AcpTheme(darkTheme = true) {
         ConnectionContent(
             previewProfiles,
-            ConnectionState.Error(2, "Failed to connect to /192.168.1.42:9000", 4_000),
+            previewStates,
             {}, {}, {}, {}, {}, {},
         )
     }
@@ -262,6 +266,6 @@ private fun ConnectionDarkPreview() {
 @Composable
 private fun ConnectionLightPreview() {
     AcpTheme(darkTheme = false) {
-        ConnectionContent(previewProfiles, ConnectionState.Disconnected, {}, {}, {}, {}, {}, {})
+        ConnectionContent(previewProfiles, emptyMap(), {}, {}, {}, {}, {}, {})
     }
 }

@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -17,7 +18,7 @@ class ConnectionViewModel(private val repository: AcpRepository) : ViewModel() {
     val profiles: StateFlow<List<ConnectionProfileEntity>?> = repository.observeProfiles()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    val connectionState: StateFlow<ConnectionState> = repository.connectionState
+    val connectionStates: StateFlow<Map<Long, ConnectionState>> = repository.connectionStates
 
     private val _form = MutableStateFlow<ProfileForm?>(null)
     val form: StateFlow<ProfileForm?> = _form.asStateFlow()
@@ -29,12 +30,16 @@ class ConnectionViewModel(private val repository: AcpRepository) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            repository.connectionState.collect { state ->
-                if (state is ConnectionState.Connected && state.profileId == awaitingProfileId) {
-                    awaitingProfileId = null
-                    _openProfile.value = state.profileId
+            repository.connectionStates
+                .map { states -> states.values.filterIsInstance<ConnectionState.Connected>().map { it.profileId }.toSet() }
+                .collect { connectedIds ->
+                    awaitingProfileId?.let { id ->
+                        if (id in connectedIds) {
+                            awaitingProfileId = null
+                            _openProfile.value = id
+                        }
+                    }
                 }
-            }
         }
     }
 
@@ -71,9 +76,9 @@ class ConnectionViewModel(private val repository: AcpRepository) : ViewModel() {
         repository.connect(profile)
     }
 
-    fun disconnect() {
+    fun disconnect(profile: ConnectionProfileEntity) {
         awaitingProfileId = null
-        repository.disconnect()
+        repository.disconnect(profile.id)
     }
 
     fun delete(profile: ConnectionProfileEntity) {

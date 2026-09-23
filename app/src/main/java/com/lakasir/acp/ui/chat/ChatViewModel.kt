@@ -44,18 +44,24 @@ class ChatViewModel(
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    val connectionState: StateFlow<ConnectionState> = repository.connectionState
+    val connectionState: StateFlow<ConnectionState> = repository.connectionStates
+        .map { states ->
+            val profileId = session.value?.connectionProfileId
+            if (profileId != null) states[profileId] ?: ConnectionState.Disconnected else ConnectionState.Disconnected
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionState.Disconnected)
 
     val isBusy: StateFlow<Boolean> = repository.busySessions
         .map { sessionId in it }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     val availability: StateFlow<InputAvailability> = combine(
-        repository.connectionState,
+        repository.connectionStates,
         repository.attachedSessions,
         session.filterNotNull(),
         resuming,
-    ) { connection, attached, session, isResuming ->
+    ) { states, attached, session, isResuming ->
+        val connection = states[session.connectionProfileId]
         when {
             connection !is ConnectionState.Connected || connection.profileId != session.connectionProfileId -> InputAvailability.Offline
             sessionId in attached -> InputAvailability.Ready
@@ -66,8 +72,8 @@ class ChatViewModel(
 
     init {
         viewModelScope.launch {
-            combine(repository.connectionState, session.filterNotNull()) { connection, session ->
-                connection is ConnectionState.Connected && connection.profileId == session.connectionProfileId
+            combine(repository.connectionStates, session.filterNotNull()) { states, session ->
+                states[session.connectionProfileId] is ConnectionState.Connected
             }.collect { connected ->
                 if (connected) resume()
             }
