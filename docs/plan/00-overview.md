@@ -1,0 +1,53 @@
+# Android ACP Client MVP — Overview
+
+## Context
+- files: empty directory `android-acp/` (greenfield)
+- Toolchain on machine: JDK 17, Android SDK platforms 34/35/36, build-tools 36.0.0, Gradle 8.10.2 wrapper cached, Compose/Room/OkHttp/kotlinx artifacts cached
+- Bridge exposes ACP JSON-RPC 2.0 over WebSocket at `ws://<host>:<port>/acp` (not in scope)
+- ACP schema verified against agentclientprotocol.com (2026-09):
+  - `initialize` params `{protocolVersion: 1, clientCapabilities: {fs: {readTextFile:false, writeTextFile:false}, terminal:false}, clientInfo}`
+  - `session/new` params `{cwd, mcpServers: []}` → `{sessionId}`
+  - `session/load` params `{sessionId, cwd, mcpServers}` (only if `agentCapabilities.loadSession`)
+  - `session/prompt` params `{sessionId, prompt: [{type:"text", text}]}` → `{stopReason}`
+  - `session/cancel` notification `{sessionId}`
+  - `session/update` notification `{sessionId, update: {sessionUpdate: agent_message_chunk | agent_thought_chunk | user_message_chunk | tool_call | tool_call_update | plan | ...}}`
+  - tool call: `toolCallId, title, kind, status (pending|in_progress|completed|failed), content[] (content | diff{path, oldText, newText} | terminal), rawInput`
+  - `session/request_permission` (agent→client request) `{sessionId, toolCall, options[{optionId, name, kind: allow_once|allow_always|reject_once|reject_always}]}` → `{outcome: {outcome:"selected", optionId}}` or `{outcome:{outcome:"cancelled"}}`
+
+## Goals
+Deliver the MVP as a sequence of feature plans. Each one is built, compiled and checked before the next starts, so progress can be tracked file by file.
+
+| # | Plan | Depends on |
+|---|------|-----------|
+| 01 | [Project setup](01-project-setup.md) | — |
+| 02 | [Design tokens & theme](02-design-tokens.md) | 01 |
+| 03 | [ACP protocol layer](03-acp-protocol-layer.md) | 01 |
+| 04 | [Room database](04-room-database.md) | 01 |
+| 05 | [Repository & connection lifecycle](05-repository.md) | 03, 04 |
+| 06 | [Connection screen](06-connection-screen.md) | 02, 05 |
+| 07 | [Sessions screen](07-sessions-screen.md) | 02, 05 |
+| 08 | [Chat screen](08-chat-screen.md) | 02, 05 |
+| 09 | [Permission dialog](09-permission-dialog.md) | 05, 08 |
+
+## Assumptions
+- `cwd` (absolute path on the bridge machine) is stored per `ConnectionProfile` (confirmed by user), because ACP `session/new` requires it
+- Manual DI (no Hilt) — lighter for MVP
+- Fonts: system `FontFamily.SansSerif` (Roboto) + `FontFamily.Monospace`, no bundled font files
+- Package name `com.lakasir.acp`
+- Code in English, no inline comments (global rule); protocol-adjustable names live only in `AcpMethods.kt` / `AcpEvent` parser
+- Single active connection at a time; multiple profiles stored
+
+## Notes
+- Out of scope / TODO: mDNS discovery, TLS/auth, fs/terminal client capabilities, voice, background notifications
+- Every plan ends with `./gradlew assembleDebug` passing
+
+## Testing
+- `./gradlew assembleDebug testDebugUnitTest` after each feature plan
+- Manual end-to-end against a LAN bridge after plan 09
+
+## Tools / Skills
+- Bash: `./gradlew`
+- WebFetch for ACP schema re-checks
+
+## Implementation
+<!-- Write you've done in here -->
