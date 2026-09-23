@@ -19,10 +19,12 @@ import com.lakasir.acp.data.model.ToolCallState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -30,6 +32,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.coroutineContext
 
 class AcpRepository(
@@ -53,6 +56,14 @@ class AcpRepository(
 
     private val _pendingPermissions = MutableStateFlow<List<PendingPermission>>(emptyList())
     val pendingPermissions: StateFlow<List<PendingPermission>> = _pendingPermissions.asStateFlow()
+
+    private val _activeProfileIds = MutableStateFlow<Set<Long>>(emptySet())
+    val activeProfileIds: StateFlow<Set<Long>> = _activeProfileIds.asStateFlow()
+
+    private val _completedTurns = MutableSharedFlow<CompletedTurn>(extraBufferCapacity = 16)
+    val completedTurns: SharedFlow<CompletedTurn> = _completedTurns.asSharedFlow()
+
+    private val retrySignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     private val clients = mutableMapOf<Long, AcpClient>()
     private val connectJobs = mutableMapOf<Long, Job>()
@@ -90,18 +101,24 @@ class AcpRepository(
         scope.launch { client.events.collect { event -> handleEvent(profile.id, event) } }
         scope.launch { client.protocolErrors.collect { Log.w(TAG, it) } }
         connectJobs[profile.id] = scope.launch { runConnection(profile, client) }
+        _activeProfileIds.update { it + profile.id }
     }
 
     fun disconnect(profileId: Long) {
         connectJobs.remove(profileId)?.cancel()
         clients.remove(profileId)?.disconnect()
         loadingRemoteIds.remove(profileId)
+        _activeProfileIds.update { it - profileId }
         scope.launch { clearProfileConnectionState(profileId) }
     }
 
     fun disconnect() {
         val ids = clients.keys.toList()
         ids.forEach { disconnect(it) }
+    }
+
+    fun retryNow() {
+        retrySignal.tryEmit(Unit)
     }
 
     suspend fun createSession(profileId: Long): Long {
@@ -152,8 +169,11 @@ class AcpRepository(
                 if (stopReason != null && stopReason != STOP_END_TURN) {
                     insertMessage(localId, MessageRole.SYSTEM, MessageType.TEXT, "Stopped: $stopReason")
                 }
+                _completedTurns.tryEmit(CompletedTurn(localId, session.title, error = null))
             } catch (e: AcpException) {
-                insertMessage(localId, MessageRole.SYSTEM, MessageType.ERROR, e.message ?: "Prompt failed")
+                val error = e.message ?: "Prompt failed"
+                insertMessage(localId, MessageRole.SYSTEM, MessageType.ERROR, error)
+                _completedTurns.tryEmit(CompletedTurn(localId, session.title, error))
             } finally {
                 _busySessions.update { it - localId }
                 sessionDao.touch(localId, clock())
@@ -206,7 +226,7 @@ class AcpRepository(
             attempt++
             val backoff = backoffMs(attempt)
             updateConnectionState(profile.id, ConnectionState.Error(profile.id, reason, backoff))
-            delay(backoff)
+            withTimeoutOrNull(backoff) { retrySignal.first() }
         }
     }
 

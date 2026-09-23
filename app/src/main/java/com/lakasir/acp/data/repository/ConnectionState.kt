@@ -15,6 +15,12 @@ sealed interface ConnectionState {
     data class Error(override val profileId: Long, val message: String, val retryInMs: Long) : ConnectionState
 }
 
+data class CompletedTurn(
+    val localSessionId: Long,
+    val sessionTitle: String,
+    val error: String?,
+)
+
 data class PendingPermission(
     val localSessionId: Long,
     val sessionTitle: String,
