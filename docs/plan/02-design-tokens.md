@@ -32,4 +32,12 @@
 - Bash: `./gradlew assembleDebug`
 
 ## Implementation
-<!-- Write you've done in here -->
+- `ui/theme/Color.kt`: `AcpPalette` raw tokens, full M3 `DarkColorScheme` / `LightColorScheme` (primary = teal accent, onPrimary = dark `#0B1F1B`), `AcpExtendedColors` (accentText, diff add/remove + line backgrounds, warning, role border colors) via `LocalAcpExtendedColors`
+- `ui/theme/Type.kt`: M3 `AcpTypography` on `FontFamily.SansSerif`; `AcpCodeTypography` (`codeMedium`, `codeSmall`) on `FontFamily.Monospace`
+- `ui/theme/Shape.kt`: 4/4/6/8/12dp radii
+- `ui/theme/Theme.kt`: `AcpTheme` (no dynamic color, system bar icon contrast) + `AcpTheme.extended` / `AcpTheme.code` accessors
+- `ui/theme/ThemePreview.kt`: token sheet previews, dark + light
+- `MainActivity` wraps content in `AcpTheme`
+- Light mode: accent fill kept as `#5FB3A3`, but accent-colored *text* uses `accentText` `#2E7D6F` because raw teal on white is only ~2.4:1
+- Contrast checked (WCAG AA ≥ 4.5): secondary text dark 5.79 / light 5.34, accent on dark bg 7.3, onPrimary on accent 6.9, accentText on white 4.91
+- Verified: `./gradlew assembleDebug` OK
