@@ -1,18 +1,15 @@
 package com.lakasir.acp.ui.navigation
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.lakasir.acp.ui.chat.ChatPlaceholder
+import com.lakasir.acp.ui.chat.ChatScreen
 import com.lakasir.acp.ui.connection.ConnectionScreen
 import com.lakasir.acp.ui.sessions.SessionsScreen
 
@@ -30,19 +27,14 @@ fun AppNavHost(widthSizeClass: WindowWidthSizeClass) {
                     isExpanded = isExpanded,
                     onBack = { navController.popBackStack() },
                     onOpenSession = { navController.navigate(Chat(it)) { launchSingleTop = true } },
-                    detailPane = { sessionId -> ChatPlaceholder(sessionId) },
+                    detailPane = { sessionId ->
+                        if (sessionId == null) ChatPlaceholder() else ChatScreen(sessionId = sessionId, onBack = null)
+                    },
                 )
             }
             composable<Chat> { entry ->
-                ChatPlaceholder(entry.toRoute<Chat>().sessionId)
+                ChatScreen(sessionId = entry.toRoute<Chat>().sessionId, onBack = { navController.popBackStack() })
             }
         }
-    }
-}
-
-@Composable
-private fun ChatPlaceholder(sessionId: Long?) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(if (sessionId == null) "Select a session" else "Chat $sessionId")
     }
 }
