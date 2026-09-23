@@ -28,4 +28,11 @@
 - Bash: `./gradlew assembleDebug`
 
 ## Implementation
-<!-- Write you've done in here -->
+- Version catalog `gradle/libs.versions.toml`: AGP 8.7.3, Kotlin 2.1.0, KSP 2.1.0-1.0.29, Compose BOM 2024.12.01, Navigation 2.8.5, Lifecycle 2.8.7, Room 2.6.1, OkHttp 4.12.0, serialization 1.7.3, coroutines 1.9.0
+- Root `settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`, `.gitignore`, wrapper 8.10.2
+- `app/build.gradle.kts`: namespace/appId `com.lakasir.acp`, minSdk 26, compile/target 35, Java 17, Room schema dir `app/schemas`
+- Manifest: INTERNET, cleartext traffic, `adjustResize`, `AcpApp`
+- `AcpApp` + empty `di/AppContainer`
+- `ui/navigation/Routes.kt` (type-safe `Connections`, `Sessions(profileId)`, `Chat(sessionId)`) and placeholder `AppNavHost`
+- `MainActivity` with `enableEdgeToEdge()`
+- Verified: `./gradlew assembleDebug` OK

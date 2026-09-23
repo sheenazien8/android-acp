@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.AcpClient" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF14161A</item>
+    </style>
+</resources>
