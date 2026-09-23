@@ -6,6 +6,7 @@ import com.lakasir.acp.data.local.MessageType
 import com.lakasir.acp.data.repository.AcpRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,5 +31,22 @@ class AcpRepositoryRulesTest {
     @Test
     fun `backoff doubles and caps at thirty seconds`() {
         assertEquals(listOf(1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 30_000L, 30_000L), (1..7).map(AcpRepository::backoffMs))
+    }
+
+    @Test
+    fun `title is trimmed to its first line`() {
+        assertEquals("Fix login", AcpRepository.normalizeTitle("  Fix login  "))
+        assertEquals("Fix login", AcpRepository.normalizeTitle("\n Fix login\nand more details"))
+    }
+
+    @Test
+    fun `blank title is rejected`() {
+        assertNull(AcpRepository.normalizeTitle(""))
+        assertNull(AcpRepository.normalizeTitle("   \n  "))
+    }
+
+    @Test
+    fun `title is capped at max length`() {
+        assertEquals(AcpRepository.MAX_TITLE_LENGTH, AcpRepository.normalizeTitle("a".repeat(100))?.length)
     }
 }

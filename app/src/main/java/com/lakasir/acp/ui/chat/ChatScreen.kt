@@ -55,6 +55,9 @@ import com.lakasir.acp.ui.chat.components.ThinkingIndicator
 import com.lakasir.acp.ui.chat.components.ThoughtBlock
 import com.lakasir.acp.ui.chat.components.ToolCallBlock
 import com.lakasir.acp.ui.components.ConnectionStatusIndicator
+import com.lakasir.acp.ui.sessions.DeleteSessionDialog
+import com.lakasir.acp.ui.sessions.RenameSessionDialog
+import com.lakasir.acp.ui.sessions.SessionMenuButton
 import com.lakasir.acp.ui.theme.AcpTheme
 import kotlinx.coroutines.launch
 
@@ -62,6 +65,7 @@ import kotlinx.coroutines.launch
 fun ChatScreen(
     sessionId: Long,
     onBack: (() -> Unit)?,
+    onDeleted: () -> Unit,
     viewModel: ChatViewModel = viewModel(key = "chat-$sessionId", factory = ChatViewModel.factory(sessionId)),
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
@@ -85,6 +89,8 @@ fun ChatScreen(
             input = ""
         },
         onCancel = viewModel::cancel,
+        onRename = viewModel::rename,
+        onDelete = { viewModel.delete(onDeleted) },
         onBack = onBack,
     )
 }
@@ -102,8 +108,13 @@ fun ChatContent(
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
     onCancel: () -> Unit,
+    onRename: (String) -> Unit,
+    onDelete: () -> Unit,
     onBack: (() -> Unit)?,
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showRename by rememberSaveable { mutableStateOf(false) }
+    var showDelete by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val atBottom by remember {
@@ -123,7 +134,15 @@ fun ChatContent(
                         }
                     }
                 },
-                actions = { ConnectionStatusIndicator(connectionState, profileId = profileId) },
+                actions = {
+                    ConnectionStatusIndicator(connectionState, profileId = profileId)
+                    SessionMenuButton(
+                        expanded = menuExpanded,
+                        onExpandedChange = { menuExpanded = it },
+                        onRename = { showRename = true },
+                        onDelete = { showDelete = true },
+                    )
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
@@ -165,6 +184,28 @@ fun ChatContent(
                 }
             }
         }
+    }
+
+    if (showRename) {
+        RenameSessionDialog(
+            currentTitle = title,
+            onConfirm = {
+                onRename(it)
+                showRename = false
+            },
+            onDismiss = { showRename = false },
+        )
+    }
+
+    if (showDelete) {
+        DeleteSessionDialog(
+            title = title,
+            onConfirm = {
+                showDelete = false
+                onDelete()
+            },
+            onDismiss = { showDelete = false },
+        )
     }
 }
 
@@ -227,7 +268,7 @@ private fun ChatDarkPreview() {
             "Fix flaky login test", 1, previewItems,
             ConnectionState.Connected(1, AgentInfo(1, "agent", "1.0", true)),
             isBusy = true, availability = InputAvailability.Ready, input = "",
-            onInputChange = {}, onSend = {}, onCancel = {}, onBack = {},
+            onInputChange = {}, onSend = {}, onCancel = {}, onRename = {}, onDelete = {}, onBack = {},
         )
     }
 }
@@ -239,7 +280,7 @@ private fun ChatLightPreview() {
         ChatContent(
             "Fix flaky login test", 1, previewItems, ConnectionState.Disconnected,
             isBusy = false, availability = InputAvailability.Offline, input = "",
-            onInputChange = {}, onSend = {}, onCancel = {}, onBack = {},
+            onInputChange = {}, onSend = {}, onCancel = {}, onRename = {}, onDelete = {}, onBack = {},
         )
     }
 }

@@ -98,6 +98,17 @@ class ChatViewModel(
         viewModelScope.launch { repository.cancel(sessionId) }
     }
 
+    fun rename(title: String) {
+        viewModelScope.launch { repository.renameSession(sessionId, title) }
+    }
+
+    fun delete(onDeleted: () -> Unit) {
+        viewModelScope.launch {
+            repository.deleteSession(sessionId)
+            onDeleted()
+        }
+    }
+
     companion object {
         fun factory(sessionId: Long): ViewModelProvider.Factory = viewModelFactory {
             initializer {

@@ -29,12 +29,16 @@ fun AppNavHost(widthSizeClass: WindowWidthSizeClass) {
                     onBack = { navController.popBackStack() },
                     onOpenSession = { navController.navigate(Chat(it)) { launchSingleTop = true } },
                     detailPane = { sessionId ->
-                        if (sessionId == null) ChatPlaceholder() else ChatScreen(sessionId = sessionId, onBack = null)
+                        if (sessionId == null) ChatPlaceholder() else ChatScreen(sessionId = sessionId, onBack = null, onDeleted = {})
                     },
                 )
             }
             composable<Chat> { entry ->
-                ChatScreen(sessionId = entry.toRoute<Chat>().sessionId, onBack = { navController.popBackStack() })
+                ChatScreen(
+                    sessionId = entry.toRoute<Chat>().sessionId,
+                    onBack = { navController.popBackStack() },
+                    onDeleted = { navController.popBackStack() },
+                )
             }
         }
         PermissionHost()

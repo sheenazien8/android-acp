@@ -89,7 +89,19 @@ class AcpRepository(
         profileDao.delete(profile)
     }
 
+    suspend fun renameSession(id: Long, title: String) {
+        val normalized = normalizeTitle(title) ?: return
+        sessionDao.updateTitle(id, normalized)
+    }
+
     suspend fun deleteSession(id: Long) {
+        if (id in _busySessions.value) {
+            cancel(id)
+        } else {
+            _pendingPermissions.value.filter { it.localSessionId == id }.forEach { answerPermission(it, null) }
+        }
+        _busySessions.update { it - id }
+        _attachedSessions.update { it - id }
         sessionDao.delete(id)
     }
 
@@ -162,18 +174,20 @@ class AcpRepository(
             val session = sessionDao.get(localId) ?: return@launch
             val client = clients[session.connectionProfileId] ?: return@launch
             insertMessage(localId, MessageRole.USER, MessageType.TEXT, text)
-            if (session.title == DEFAULT_TITLE) sessionDao.updateTitle(localId, text.lineSequence().first().take(60))
+            if (session.title == DEFAULT_TITLE) normalizeTitle(text)?.let { sessionDao.updateTitle(localId, it) }
             _busySessions.update { it + localId }
             try {
                 val stopReason = client.prompt(session.remoteSessionId, text)
+                val title = sessionDao.get(localId)?.title ?: return@launch
                 if (stopReason != null && stopReason != STOP_END_TURN) {
                     insertMessage(localId, MessageRole.SYSTEM, MessageType.TEXT, "Stopped: $stopReason")
                 }
-                _completedTurns.tryEmit(CompletedTurn(localId, session.title, error = null))
+                _completedTurns.tryEmit(CompletedTurn(localId, title, error = null))
             } catch (e: AcpException) {
+                val title = sessionDao.get(localId)?.title ?: return@launch
                 val error = e.message ?: "Prompt failed"
                 insertMessage(localId, MessageRole.SYSTEM, MessageType.ERROR, error)
-                _completedTurns.tryEmit(CompletedTurn(localId, session.title, error))
+                _completedTurns.tryEmit(CompletedTurn(localId, title, error))
             } finally {
                 _busySessions.update { it - localId }
                 sessionDao.touch(localId, clock())
@@ -359,6 +373,10 @@ class AcpRepository(
         const val DEFAULT_TITLE = "New session"
         private const val STOP_END_TURN = "end_turn"
         private const val MAX_BACKOFF_MS = 30_000L
+        const val MAX_TITLE_LENGTH = 60
+
+        fun normalizeTitle(raw: String): String? =
+            raw.trim().lineSequence().first().trim().take(MAX_TITLE_LENGTH).takeIf { it.isNotEmpty() }
 
         fun backoffMs(attempt: Int): Long = minOf(1_000L shl (attempt - 1).coerceIn(0, 5), MAX_BACKOFF_MS)
 

@@ -28,6 +28,10 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 | 07 | [Sessions screen](07-sessions-screen.md) | 02, 05 |
 | 08 | [Chat screen](08-chat-screen.md) | 02, 05 |
 | 09 | [Permission dialog](09-permission-dialog.md) | 05, 08 |
+| 10 | [Multiple concurrent connections](10-multiple-concurrent-connections.md) | 05, 06 |
+| 11 | [Background connection](11-background-connection.md) | 10 |
+| 12 | [Session CRUD](12-session-crud.md) | 07, 08 |
+| 13 | [Auto mode](13-auto-mode.md) | 09, 12 |
 
 ## Assumptions
 - `cwd` (absolute path on the bridge machine) is stored per `ConnectionProfile` (confirmed by user), because ACP `session/new` requires it
@@ -35,14 +39,15 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - Fonts: system `FontFamily.SansSerif` (Roboto) + `FontFamily.Monospace`, no bundled font files
 - Package name `com.lakasir.acp`
 - Code in English, no inline comments (global rule); protocol-adjustable names live only in `AcpMethods.kt` / `AcpEvent` parser
-- Single active connection at a time; multiple profiles stored
+- Multiple profiles stored, and several can be connected at the same time, each with its own client (plan 10; the MVP started with one active connection)
 - UI follows the project skill `mobile-android-design` (Material 3 + Compose), with these project-specific deviations:
   - Dynamic color (Material You) is **off**: the fixed brand palette and single teal accent from the spec win over wallpaper colors
   - Skill's rounded 12–16dp cards/avatars are **not** used; blocks are flat with a 4dp radius and role-colored left border (spec's "tool, not chatbot" direction)
   - No bottom nav / drawer: the app is a linear stack (Connections → Sessions → Chat)
 
 ## Notes
-- Out of scope / TODO: mDNS discovery, TLS/auth, fs/terminal client capabilities, voice, background notifications
+- Out of scope / TODO: mDNS discovery, TLS/auth, fs/terminal client capabilities, voice, agent-side session modes (`session/set_mode`)
+- Background connection and notifications, first out of scope, were added in plan 11
 - Every plan ends with `./gradlew assembleDebug` passing
 
 ## Testing
@@ -50,12 +55,14 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - Manual end-to-end against a LAN bridge after plan 09
 
 ## Tools / Skills
-- Skill `mobile-android-design` (@.claude/skills/mobile-android-design) — load before plans 02, 06, 07, 08, 09; references: `material3-theming.md`, `android-navigation.md`, `compose-components.md`
+- Skill `mobile-android-design` (@.claude/skills/mobile-android-design) — load before plans 02, 06, 07, 08, 09, 12, 13; references: `material3-theming.md`, `android-navigation.md`, `compose-components.md`
 - Bash: `./gradlew`
 - WebFetch for ACP schema re-checks
 
 ## Implementation
 - Plans 01–09 implemented, one commit each (see each plan's Implementation section for details and any deviations)
-- 53 JVM unit tests, all passing
+- Plans 10–12 implemented (multiple connections, background service + notifications, session rename/delete) but not committed yet
+- Plan 13 (auto mode) planned, not started
+- 64 JVM unit tests after plan 12, all passing; `lintDebug` passes
 - Debug APK installed over adb on a Pixel 7a (Android 15); the app launches and the Connections screen renders
 - Not yet verified: end-to-end against a real ACP bridge (connect → initialize → new session → prompt streaming → tool calls → permission → cancel)

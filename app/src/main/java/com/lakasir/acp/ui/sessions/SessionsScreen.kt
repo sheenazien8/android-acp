@@ -1,7 +1,8 @@
 package com.lakasir.acp.ui.sessions
 
 import android.content.res.Configuration
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +19,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -91,6 +91,10 @@ fun SessionsScreen(
             viewModel.onCreatedSessionOpened()
         }
     }
+    LaunchedEffect(sessions) {
+        val current = sessions ?: return@LaunchedEffect
+        if (selectedId != null && current.none { it.session.id == selectedId }) selectedId = null
+    }
     LaunchedEffect(error) {
         error?.let {
             snackbarHostState.showSnackbar(it)
@@ -112,10 +116,8 @@ fun SessionsScreen(
             onOpen = open,
             onCreate = viewModel::createSession,
             onConnect = viewModel::connect,
-            onDelete = { id ->
-                if (selectedId == id) selectedId = null
-                viewModel.deleteSession(id)
-            },
+            onRename = viewModel::renameSession,
+            onDelete = viewModel::deleteSession,
             modifier = modifier,
         )
     }
@@ -146,12 +148,16 @@ fun SessionsContent(
     onOpen: (Long) -> Unit,
     onCreate: () -> Unit,
     onConnect: () -> Unit,
+    onRename: (Long, String) -> Unit,
     onDelete: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isConnected = connectionState is ConnectionState.Connected && connectionState.profileId == profileId
     val isActive = connectionState.profileId == profileId
-    var pendingDelete by remember { mutableStateOf<SessionEntity?>(null) }
+    var pendingDeleteId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pendingRenameId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val pendingDelete = sessions?.firstOrNull { it.session.id == pendingDeleteId }?.session
+    val pendingRename = sessions?.firstOrNull { it.session.id == pendingRenameId }?.session
 
     Scaffold(
         modifier = modifier,
@@ -203,12 +209,14 @@ fun SessionsContent(
                 )
                 else -> LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
                     items(sessions, key = { it.session.id }) { summary ->
-                        SwipeToDelete(onDeleteRequest = { pendingDelete = summary.session }) {
+                        SwipeToDelete(onDeleteRequest = { pendingDeleteId = summary.session.id }) {
                             SessionRow(
                                 summary = summary,
                                 isBusy = summary.session.id in busy,
                                 isSelected = summary.session.id == selectedId,
                                 onClick = { onOpen(summary.session.id) },
+                                onRename = { pendingRenameId = summary.session.id },
+                                onDelete = { pendingDeleteId = summary.session.id },
                             )
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline, modifier = Modifier.padding(start = 16.dp))
@@ -219,17 +227,24 @@ fun SessionsContent(
     }
 
     pendingDelete?.let { session ->
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text("Delete session?") },
-            text = { Text("\"${session.title}\" and its history will be removed from this device. The agent is not affected.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    onDelete(session.id)
-                    pendingDelete = null
-                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+        DeleteSessionDialog(
+            title = session.title,
+            onConfirm = {
+                onDelete(session.id)
+                pendingDeleteId = null
             },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Keep") } },
+            onDismiss = { pendingDeleteId = null },
+        )
+    }
+
+    pendingRename?.let { session ->
+        RenameSessionDialog(
+            currentTitle = session.title,
+            onConfirm = { title ->
+                onRename(session.id, title)
+                pendingRenameId = null
+            },
+            onDismiss = { pendingRenameId = null },
         )
     }
 }
@@ -250,12 +265,21 @@ private fun OfflineRow(onConnect: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SessionRow(summary: SessionSummary, isBusy: Boolean, isSelected: Boolean, onClick: () -> Unit) {
+private fun SessionRow(
+    summary: SessionSummary,
+    isBusy: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val session = summary.session
+    var menuExpanded by remember { mutableStateOf(false) }
     ListItem(
         modifier = Modifier
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = { menuExpanded = true }, onLongClickLabel = "Session actions")
             .leftBorder(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent),
         colors = ListItemDefaults.colors(
             containerColor = if (isSelected) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.background,
@@ -265,9 +289,17 @@ private fun SessionRow(summary: SessionSummary, isBusy: Boolean, isSelected: Boo
             { Text(it.trim(), maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         },
         trailingContent = {
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(relativeTime(session.updatedAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (isBusy) CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(relativeTime(session.updatedAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (isBusy) CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                }
+                SessionMenuButton(
+                    expanded = menuExpanded,
+                    onExpandedChange = { menuExpanded = it },
+                    onRename = onRename,
+                    onDelete = onDelete,
+                )
             }
         },
     )
@@ -293,7 +325,7 @@ private fun SessionsDarkPreview() {
             creating = false,
             selectedId = null,
             snackbarHostState = SnackbarHostState(),
-            onBack = {}, onOpen = {}, onCreate = {}, onConnect = {}, onDelete = {},
+            onBack = {}, onOpen = {}, onCreate = {}, onConnect = {}, onRename = { _, _ -> }, onDelete = {},
         )
     }
 }
@@ -311,7 +343,7 @@ private fun SessionsLightPreview() {
             creating = false,
             selectedId = 2,
             snackbarHostState = SnackbarHostState(),
-            onBack = {}, onOpen = {}, onCreate = {}, onConnect = {}, onDelete = {},
+            onBack = {}, onOpen = {}, onCreate = {}, onConnect = {}, onRename = { _, _ -> }, onDelete = {},
         )
     }
 }

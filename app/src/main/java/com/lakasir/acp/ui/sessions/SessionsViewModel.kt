@@ -67,6 +67,10 @@ class SessionsViewModel(
         repository.disconnect(profileId)
     }
 
+    fun renameSession(id: Long, title: String) {
+        viewModelScope.launch { repository.renameSession(id, title) }
+    }
+
     fun deleteSession(id: Long) {
         viewModelScope.launch { repository.deleteSession(id) }
     }
