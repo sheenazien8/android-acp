@@ -33,4 +33,18 @@
 - Bash: `./gradlew`
 
 ## Implementation
-<!-- Write you've done in here -->
+- `data/model/MessagePayloads.kt`: JSON payloads stored in `MessageEntity.content` — `ToolCallState` (with `merge()`, where a new `content` list replaces the old one, as ACP specifies), `DiffState`, `PlanItem` + `PlanCodec`, `PermissionRecord`
+- `data/repository/ConnectionState.kt`: `ConnectionState` (Disconnected / Connecting(attempt) / Connected(agent) / Error(message, retryInMs)), `PendingPermission`
+- `data/repository/AcpRepository.kt`:
+  - profile CRUD; deleting the active profile disconnects
+  - `connect(profile)` runs a loop: open WS → `initialize` → wait for drop → back off 1s, 2s, 4s … capped at 30s → retry; `disconnect()` stops it
+  - `createSession`, `openSession` (`session/load` only if the agent supports it; replayed updates are ignored while loading because Room already has them), `deleteSession`
+  - `sendPrompt` runs in the app scope, so leaving the chat screen doesn't cancel the turn; stores the user message, sets the title from the first prompt, records non-`end_turn` stop reasons and errors as messages
+  - `cancel` answers any pending permission for that session with `cancelled`, then sends `session/cancel`
+  - event persistence: chunks append to the last same-type agent row, tool calls upsert by `toolCallId`, plan updates replace the last plan row, unknown kinds stored as SYSTEM with `rawJson`, `user_message_chunk` ignored (the app stores its own)
+  - `busySessions`, `attachedSessions` (sessions that can receive prompts on this connection), `pendingPermissions` (a queue, in case several arrive) + `answerPermission`
+  - on disconnect: busy/attached/pending cleared; in-flight prompts fail with "Connection lost" and that is saved as an error row
+- `AppContainer`: app scope (`SupervisorJob + Dispatchers.Default`), `AcpClient` over `OkHttpAcpTransport`, `AcpRepository`
+- `MessageDao.get(id)` added
+- Tests: `MessagePayloadsTest`, `AcpRepositoryRulesTest` (append rule, backoff); 38 total, all pass
+- Verified: `./gradlew assembleDebug testDebugUnitTest` OK

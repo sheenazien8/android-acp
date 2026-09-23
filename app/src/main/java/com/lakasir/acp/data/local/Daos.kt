@@ -77,6 +77,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE sessionId = :sessionId ORDER BY timestamp, id")
     fun observeBySession(sessionId: Long): Flow<List<MessageEntity>>
 
+    @Query("SELECT * FROM messages WHERE id = :id")
+    suspend fun get(id: Long): MessageEntity?
+
     @Query("SELECT * FROM messages WHERE sessionId = :sessionId ORDER BY id DESC LIMIT 1")
     suspend fun last(sessionId: Long): MessageEntity?
 
