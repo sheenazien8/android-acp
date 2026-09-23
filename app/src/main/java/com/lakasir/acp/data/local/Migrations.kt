@@ -1,7 +1,16 @@
 package com.lakasir.acp.data.local
 
 import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 object Migrations {
-    val ALL: Array<Migration> = emptyArray()
+    const val ADD_AUTO_APPROVE_SQL = "ALTER TABLE sessions ADD COLUMN autoApprove INTEGER NOT NULL DEFAULT 0"
+
+    val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(ADD_AUTO_APPROVE_SQL)
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2)
 }

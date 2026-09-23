@@ -68,6 +68,9 @@ interface SessionDao {
     @Query("UPDATE sessions SET title = :title WHERE id = :id")
     suspend fun updateTitle(id: Long, title: String)
 
+    @Query("UPDATE sessions SET autoApprove = :enabled WHERE id = :id")
+    suspend fun updateAutoApprove(id: Long, enabled: Boolean)
+
     @Query("UPDATE sessions SET status = :status WHERE id = :id")
     suspend fun updateStatus(id: Long, status: SessionStatus)
 }

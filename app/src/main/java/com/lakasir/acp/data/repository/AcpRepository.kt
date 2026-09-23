@@ -5,6 +5,8 @@ import com.lakasir.acp.acp.AcpClient
 import com.lakasir.acp.acp.AcpClientFactory
 import com.lakasir.acp.acp.AcpEvent
 import com.lakasir.acp.acp.AcpException
+import com.lakasir.acp.acp.PermissionOption
+import com.lakasir.acp.acp.PermissionOptionKind
 import com.lakasir.acp.acp.TransportState
 import com.lakasir.acp.data.local.AppDatabase
 import com.lakasir.acp.data.local.ConnectionProfileEntity
@@ -92,6 +94,14 @@ class AcpRepository(
     suspend fun renameSession(id: Long, title: String) {
         val normalized = normalizeTitle(title) ?: return
         sessionDao.updateTitle(id, normalized)
+    }
+
+    suspend fun setAutoApprove(id: Long, enabled: Boolean) {
+        sessionDao.updateAutoApprove(id, enabled)
+        if (!enabled) return
+        _pendingPermissions.value.filter { it.localSessionId == id }.forEach { pending ->
+            autoApproveOption(pending.request.options)?.let { answerPermission(pending, it.optionId, auto = true) }
+        }
     }
 
     suspend fun deleteSession(id: Long) {
@@ -202,7 +212,7 @@ class AcpRepository(
         client.cancel(session.remoteSessionId)
     }
 
-    suspend fun answerPermission(pending: PendingPermission, optionId: String?) {
+    suspend fun answerPermission(pending: PendingPermission, optionId: String?, auto: Boolean = false) {
         _pendingPermissions.update { list -> list.filterNot { it.request.requestId == pending.request.requestId } }
         val profileId = sessionDao.get(pending.localSessionId)?.connectionProfileId ?: return
         val client = clients[profileId] ?: return
@@ -211,7 +221,7 @@ class AcpRepository(
         writeMutex.withLock {
             val message = messageDao.get(pending.messageId) ?: return@withLock
             val record = PermissionRecord.decode(message.content) ?: return@withLock
-            messageDao.update(message.copy(content = record.copy(choice = choice).encode()))
+            messageDao.update(message.copy(content = record.copy(choice = choice, auto = auto).encode()))
         }
     }
 
@@ -295,18 +305,26 @@ class AcpRepository(
             }
             is AcpEvent.Unknown -> insertMessage(localId, MessageRole.SYSTEM, MessageType.TEXT, event.kind, rawJson = event.raw.toString())
             is AcpEvent.PermissionRequest -> {
+                val session = sessionDao.get(localId)
+                val autoOption = autoApproveOption(event.options).takeIf { session?.autoApprove == true }
+                val autoAnswered = autoOption != null &&
+                    clients[session!!.connectionProfileId]?.respondPermission(event.requestId, autoOption.optionId) == true
                 val record = PermissionRecord(
                     title = event.toolCall.title ?: event.toolCall.kind ?: "Permission requested",
                     kind = event.toolCall.kind,
                     input = event.toolCall.rawInput?.toString(),
                     options = event.options.map { it.name },
+                    choice = autoOption?.name.takeIf { autoAnswered },
+                    auto = autoAnswered,
                 )
                 val messageId = insertMessage(
                     localId, MessageRole.TOOL, MessageType.PERMISSION_REQUEST, record.encode(),
                     toolCallId = event.toolCall.toolCallId, rawJson = event.raw.toString(),
                 )
-                val title = sessionDao.get(localId)?.title ?: DEFAULT_TITLE
-                _pendingPermissions.update { it + PendingPermission(localId, title, messageId, event) }
+                if (autoOption == null) {
+                    val title = session?.title ?: DEFAULT_TITLE
+                    _pendingPermissions.update { it + PendingPermission(localId, title, messageId, event) }
+                }
             }
         }
     }
@@ -379,6 +397,10 @@ class AcpRepository(
             raw.trim().lineSequence().first().trim().take(MAX_TITLE_LENGTH).takeIf { it.isNotEmpty() }
 
         fun backoffMs(attempt: Int): Long = minOf(1_000L shl (attempt - 1).coerceIn(0, 5), MAX_BACKOFF_MS)
+
+        fun autoApproveOption(options: List<PermissionOption>): PermissionOption? =
+            options.firstOrNull { it.kind == PermissionOptionKind.ALLOW_ONCE }
+                ?: options.firstOrNull { it.kind == PermissionOptionKind.ALLOW_ALWAYS }
 
         fun canAppend(last: MessageEntity?, role: MessageRole, type: MessageType): Boolean =
             last != null && last.role == role && last.type == type

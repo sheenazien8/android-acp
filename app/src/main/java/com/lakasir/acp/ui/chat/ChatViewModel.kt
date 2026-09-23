@@ -102,6 +102,10 @@ class ChatViewModel(
         viewModelScope.launch { repository.renameSession(sessionId, title) }
     }
 
+    fun setAutoApprove(enabled: Boolean) {
+        viewModelScope.launch { repository.setAutoApprove(sessionId, enabled) }
+    }
+
     fun delete(onDeleted: () -> Unit) {
         viewModelScope.launch {
             repository.deleteSession(sessionId)

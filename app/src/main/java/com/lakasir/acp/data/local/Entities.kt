@@ -40,6 +40,7 @@ data class SessionEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val status: SessionStatus = SessionStatus.ACTIVE,
+    @ColumnInfo(defaultValue = "0") val autoApprove: Boolean = false,
 )
 
 enum class MessageRole { USER, AGENT, SYSTEM, TOOL }

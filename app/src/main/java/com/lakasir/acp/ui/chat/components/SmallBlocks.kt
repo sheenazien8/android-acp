@@ -5,7 +5,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -13,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontStyle
@@ -76,11 +81,20 @@ fun PermissionRecordRow(record: PermissionRecord, modifier: Modifier = Modifier)
         modifier = modifier,
     ) {
         Text(record.title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-        Text(
-            record.choice?.let { "Answered: $it" } ?: "Waiting for your answer",
-            style = MaterialTheme.typography.labelSmall,
-            color = if (answered) MaterialTheme.colorScheme.onSurfaceVariant else AcpTheme.extended.warning,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (record.auto) {
+                Icon(Icons.Filled.Bolt, contentDescription = null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                when {
+                    record.choice == null -> "Waiting for your answer"
+                    record.auto -> "Auto-approved: ${record.choice}"
+                    else -> "Answered: ${record.choice}"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = if (answered) MaterialTheme.colorScheme.onSurfaceVariant else AcpTheme.extended.warning,
+            )
+        }
     }
 }
 

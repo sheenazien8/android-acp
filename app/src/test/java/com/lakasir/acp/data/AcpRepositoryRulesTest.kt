@@ -1,5 +1,7 @@
 package com.lakasir.acp.data
 
+import com.lakasir.acp.acp.PermissionOption
+import com.lakasir.acp.acp.PermissionOptionKind
 import com.lakasir.acp.data.local.MessageEntity
 import com.lakasir.acp.data.local.MessageRole
 import com.lakasir.acp.data.local.MessageType
@@ -48,5 +50,30 @@ class AcpRepositoryRulesTest {
     @Test
     fun `title is capped at max length`() {
         assertEquals(AcpRepository.MAX_TITLE_LENGTH, AcpRepository.normalizeTitle("a".repeat(100))?.length)
+    }
+
+    private fun option(id: String, kind: String) = PermissionOption(id, id, kind)
+
+    @Test
+    fun `auto mode prefers allow once`() {
+        val options = listOf(
+            option("always", PermissionOptionKind.ALLOW_ALWAYS),
+            option("once", PermissionOptionKind.ALLOW_ONCE),
+            option("deny", PermissionOptionKind.REJECT_ONCE),
+        )
+        assertEquals("once", AcpRepository.autoApproveOption(options)?.optionId)
+    }
+
+    @Test
+    fun `auto mode falls back to allow always`() {
+        val options = listOf(option("deny", PermissionOptionKind.REJECT_ONCE), option("always", PermissionOptionKind.ALLOW_ALWAYS))
+        assertEquals("always", AcpRepository.autoApproveOption(options)?.optionId)
+    }
+
+    @Test
+    fun `auto mode leaves requests without an allow option to the user`() {
+        assertNull(AcpRepository.autoApproveOption(emptyList()))
+        assertNull(AcpRepository.autoApproveOption(listOf(option("deny", PermissionOptionKind.REJECT_ONCE), option("never", PermissionOptionKind.REJECT_ALWAYS))))
+        assertNull(AcpRepository.autoApproveOption(listOf(option("maybe", "something_else"))))
     }
 }

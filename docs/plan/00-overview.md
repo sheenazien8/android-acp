@@ -32,6 +32,8 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 | 11 | [Background connection](11-background-connection.md) | 10 |
 | 12 | [Session CRUD](12-session-crud.md) | 07, 08 |
 | 13 | [Auto mode](13-auto-mode.md) | 09, 12 |
+| 14 | [File manager](14-file-manager.md) | 08, 10 |
+| 15 | [Git support](15-git-support.md) | 14 |
 
 ## Assumptions
 - `cwd` (absolute path on the bridge machine) is stored per `ConnectionProfile` (confirmed by user), because ACP `session/new` requires it
@@ -43,10 +45,11 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - UI follows the project skill `mobile-android-design` (Material 3 + Compose), with these project-specific deviations:
   - Dynamic color (Material You) is **off**: the fixed brand palette and single teal accent from the spec win over wallpaper colors
   - Skill's rounded 12–16dp cards/avatars are **not** used; blocks are flat with a 4dp radius and role-colored left border (spec's "tool, not chatbot" direction)
-  - No bottom nav / drawer: the app is a linear stack (Connections → Sessions → Chat)
+  - No bottom nav / drawer: the app is a linear stack (Connections → Sessions → Chat). Exception (plans 14–15): the chat screen has an end-side workspace sidebar (Files | Git)
+- Workspace features (plans 14–15) use `_lakasir/*` ACP extension methods answered by the bridge itself, on the same WebSocket; paths are relative to the profile `cwd`
 
 ## Notes
-- Out of scope / TODO: mDNS discovery, TLS/auth, fs/terminal client capabilities, voice, agent-side session modes (`session/set_mode`)
+- Out of scope / TODO: mDNS discovery, TLS/auth (more important once plan 14 allows file writes), fs/terminal client capabilities, git push/pull/checkout, voice, agent-side session modes (`session/set_mode`)
 - Background connection and notifications, first out of scope, were added in plan 11
 - Every plan ends with `./gradlew assembleDebug` passing
 
@@ -55,14 +58,14 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - Manual end-to-end against a LAN bridge after plan 09
 
 ## Tools / Skills
-- Skill `mobile-android-design` (@.claude/skills/mobile-android-design) — load before plans 02, 06, 07, 08, 09, 12, 13; references: `material3-theming.md`, `android-navigation.md`, `compose-components.md`
+- Skill `mobile-android-design` (@.claude/skills/mobile-android-design) — load before plans 02, 06, 07, 08, 09, 12, 13, 14, 15; references: `material3-theming.md`, `android-navigation.md`, `compose-components.md`
 - Bash: `./gradlew`
 - WebFetch for ACP schema re-checks
 
 ## Implementation
 - Plans 01–09 implemented, one commit each (see each plan's Implementation section for details and any deviations)
-- Plans 10–12 implemented (multiple connections, background service + notifications, session rename/delete) but not committed yet
-- Plan 13 (auto mode) planned, not started
-- 64 JVM unit tests after plan 12, all passing; `lintDebug` passes
+- Plans 10–13 implemented (multiple connections, background service + notifications, session rename/delete, auto mode) but not committed yet
+- Room database is at version 2 (plan 13 adds `sessions.autoApprove` via `MIGRATION_1_2`)
+- 68 JVM unit tests after plan 13, all passing; `lintDebug` passes
 - Debug APK installed over adb on a Pixel 7a (Android 15); the app launches and the Connections screen renders
 - Not yet verified: end-to-end against a real ACP bridge (connect → initialize → new session → prompt streaming → tool calls → permission → cancel)

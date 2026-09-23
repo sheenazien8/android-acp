@@ -67,6 +67,7 @@ data class PermissionRecord(
     val input: String? = null,
     val options: List<String> = emptyList(),
     val choice: String? = null,
+    val auto: Boolean = false,
 ) {
     fun encode(): String = AcpJson.encodeToString(serializer(), this)
 

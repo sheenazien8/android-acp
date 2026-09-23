@@ -13,14 +13,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -33,6 +38,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -78,6 +85,7 @@ fun ChatScreen(
     ChatContent(
         title = session?.title.orEmpty(),
         profileId = session?.connectionProfileId,
+        autoApprove = session?.autoApprove == true,
         items = items.orEmpty(),
         connectionState = connectionState,
         isBusy = isBusy,
@@ -91,6 +99,7 @@ fun ChatScreen(
         onCancel = viewModel::cancel,
         onRename = viewModel::rename,
         onDelete = { viewModel.delete(onDeleted) },
+        onAutoApproveChange = viewModel::setAutoApprove,
         onBack = onBack,
     )
 }
@@ -100,6 +109,7 @@ fun ChatScreen(
 fun ChatContent(
     title: String,
     profileId: Long?,
+    autoApprove: Boolean,
     items: List<ChatItem>,
     connectionState: ConnectionState,
     isBusy: Boolean,
@@ -110,11 +120,13 @@ fun ChatContent(
     onCancel: () -> Unit,
     onRename: (String) -> Unit,
     onDelete: () -> Unit,
+    onAutoApproveChange: (Boolean) -> Unit,
     onBack: (() -> Unit)?,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var showRename by rememberSaveable { mutableStateOf(false) }
     var showDelete by rememberSaveable { mutableStateOf(false) }
+    var showAutoConfirm by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val atBottom by remember {
@@ -126,7 +138,14 @@ fun ChatContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium) },
+                title = {
+                    Column {
+                        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+                        if (autoApprove) {
+                            Text("Auto mode", style = MaterialTheme.typography.labelSmall, color = AcpTheme.extended.accentText)
+                        }
+                    }
+                },
                 navigationIcon = {
                     if (onBack != null) {
                         IconButton(onClick = onBack) {
@@ -136,6 +155,19 @@ fun ChatContent(
                 },
                 actions = {
                     ConnectionStatusIndicator(connectionState, profileId = profileId)
+                    IconToggleButton(
+                        checked = autoApprove,
+                        onCheckedChange = { enabled -> if (enabled) showAutoConfirm = true else onAutoApproveChange(false) },
+                        modifier = Modifier.semantics {
+                            contentDescription = if (autoApprove) "Auto mode on" else "Auto mode off"
+                        },
+                    ) {
+                        Icon(
+                            if (autoApprove) Icons.Filled.Bolt else Icons.Outlined.Bolt,
+                            contentDescription = null,
+                            tint = if (autoApprove) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     SessionMenuButton(
                         expanded = menuExpanded,
                         onExpandedChange = { menuExpanded = it },
@@ -197,6 +229,22 @@ fun ChatContent(
         )
     }
 
+    if (showAutoConfirm) {
+        AlertDialog(
+            onDismissRequest = { showAutoConfirm = false },
+            icon = { Icon(Icons.Filled.Bolt, contentDescription = null) },
+            title = { Text("Turn on auto mode?") },
+            text = { Text("The agent will run tools and edit files in this session without asking. Continue?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showAutoConfirm = false
+                    onAutoApproveChange(true)
+                }) { Text("Turn on") }
+            },
+            dismissButton = { TextButton(onClick = { showAutoConfirm = false }) { Text("Cancel") } },
+        )
+    }
+
     if (showDelete) {
         DeleteSessionDialog(
             title = title,
@@ -255,7 +303,7 @@ private val previewItems = listOf(
             diffs = listOf(DiffState("src/test/LoginTest.kt", "delay(500)\nassertLoggedIn()", "awaitIdle()\nassertLoggedIn()")),
         ),
     ),
-    ChatItem.Permission(5, PermissionRecord("Run ./gradlew test", "execute", choice = "Allow once")),
+    ChatItem.Permission(5, PermissionRecord("Run ./gradlew test", "execute", choice = "Allow once", auto = true)),
     ChatItem.AgentText(6, "Replaced the fixed delay with `awaitIdle()`:\n```kotlin\nawaitIdle()\n```\nThe test now passes 50/50 runs."),
     ChatItem.Error(7, "Request 'session/prompt' timed out"),
 )
@@ -265,10 +313,10 @@ private val previewItems = listOf(
 private fun ChatDarkPreview() {
     AcpTheme(darkTheme = true) {
         ChatContent(
-            "Fix flaky login test", 1, previewItems,
+            "Fix flaky login test", 1, true, previewItems,
             ConnectionState.Connected(1, AgentInfo(1, "agent", "1.0", true)),
             isBusy = true, availability = InputAvailability.Ready, input = "",
-            onInputChange = {}, onSend = {}, onCancel = {}, onRename = {}, onDelete = {}, onBack = {},
+            onInputChange = {}, onSend = {}, onCancel = {}, onRename = {}, onDelete = {}, onAutoApproveChange = {}, onBack = {},
         )
     }
 }
@@ -278,9 +326,9 @@ private fun ChatDarkPreview() {
 private fun ChatLightPreview() {
     AcpTheme(darkTheme = false) {
         ChatContent(
-            "Fix flaky login test", 1, previewItems, ConnectionState.Disconnected,
+            "Fix flaky login test", 1, false, previewItems, ConnectionState.Disconnected,
             isBusy = false, availability = InputAvailability.Offline, input = "",
-            onInputChange = {}, onSend = {}, onCancel = {}, onRename = {}, onDelete = {}, onBack = {},
+            onInputChange = {}, onSend = {}, onCancel = {}, onRename = {}, onDelete = {}, onAutoApproveChange = {}, onBack = {},
         )
     }
 }

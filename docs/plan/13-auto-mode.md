@@ -70,4 +70,18 @@
 - WebFetch agentclientprotocol.com if the follow-up `session/set_mode` is picked up
 
 ## Implementation
-<!-- Write you've done in here -->
+- Data: `SessionEntity.autoApprove` (`@ColumnInfo(defaultValue = "0")`), DB `version = 2`, `Migrations.MIGRATION_1_2` (`ALTER TABLE sessions ADD COLUMN autoApprove INTEGER NOT NULL DEFAULT 0`) in `Migrations.ALL`, `SessionDao.updateAutoApprove`; exported schema `app/schemas/.../2.json` matches the migration
+- `PermissionRecord.auto` (default `false`, so old rows decode as manual answers)
+- `AcpRepository`:
+  - `autoApproveOption(options)` in the companion: allow_once, else allow_always, else `null`
+  - `persist(PermissionRequest)`: for an auto-mode session with an allow option, responds via `respondPermission` first, then inserts the row with `choice` + `auto = true`; the request is never queued, so no dialog and no plan 11 notification. No allow option → queued as before. Auto mode on but the socket is gone → row stays unanswered and nothing is queued
+  - `setAutoApprove(id, enabled)`: writes the flag; when enabling, answers that session's queued requests through `answerPermission(..., auto = true)`
+  - `answerPermission` got an `auto` parameter (default `false`)
+- Chat: `ChatViewModel.setAutoApprove`; top bar `IconToggleButton` with a filled/outlined bolt (primary tint when on, state in `contentDescription`), "Auto mode" label under the title, confirm `AlertDialog` when turning on, turning off is immediate
+- `PermissionRecordRow`: small bolt + "Auto-approved: <option>" for auto answers
+- Sessions list: bolt icon next to the title for sessions in auto mode
+- Changes from plan:
+  - The state label is a plain accent `labelSmall` under the title, not an `AssistChip`, to keep the top bar compact
+  - The response is sent before the row is inserted, so the row is written once with its final state
+  - Repository tests with `FakeTransport` and the `MigrationTestHelper` test were not written: the repository needs Room, and the project has no Robolectric or instrumented tests. Covered instead: `autoApproveOption` (3 cases in `AcpRepositoryRulesTest`), `PermissionRecord.auto` round trip + old-row decode (`MessagePayloadsTest`), and the exported schema checked against the migration SQL
+- Verified: `./gradlew :app:compileDebugKotlin testDebugUnitTest lintDebug` pass (68 unit tests). Manual device testing against a bridge not done yet

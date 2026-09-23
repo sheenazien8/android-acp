@@ -79,4 +79,11 @@ class MessagePayloadsTest {
         val record = PermissionRecord("rm", "execute", "{}", listOf("Allow", "Deny"), "Allow")
         assertEquals(record, PermissionRecord.decode(record.encode()))
     }
+
+    @Test
+    fun `auto approved permission record round trips and old records decode as manual`() {
+        val record = PermissionRecord("rm", "execute", "{}", listOf("Allow", "Deny"), "Allow", auto = true)
+        assertEquals(record, PermissionRecord.decode(record.encode()))
+        assertEquals(false, PermissionRecord.decode("""{"title":"rm","choice":"Allow"}""")?.auto)
+    }
 }

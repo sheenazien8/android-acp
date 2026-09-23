@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -284,7 +285,14 @@ private fun SessionRow(
         colors = ListItemDefaults.colors(
             containerColor = if (isSelected) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.background,
         ),
-        headlineContent = { Text(session.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        headlineContent = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(session.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (session.autoApprove) {
+                    Icon(Icons.Filled.Bolt, contentDescription = "Auto mode", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        },
         supportingContent = summary.preview?.let {
             { Text(it.trim(), maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         },
