@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -50,11 +51,13 @@ fun PermissionHost(viewModel: PermissionViewModel = viewModel(factory = AppViewM
 @Composable
 fun PermissionDialog(pending: PendingPermission, onOption: (String) -> Unit, onCancel: () -> Unit) {
     val toolCall = pending.request.toolCall
+    val title = toolCall.title ?: toolCall.kind ?: "Permission requested"
+    val titleIsLong = title.length > TITLE_MAX_CHARS || title.contains('\n')
     AlertDialog(
         onDismissRequest = onCancel,
         properties = DialogProperties(dismissOnClickOutside = false),
         icon = { Icon(Icons.Outlined.Security, contentDescription = null) },
-        title = { Text(toolCall.title ?: toolCall.kind ?: "Permission requested") },
+        title = { Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         text = {
             Column(
                 modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
@@ -65,6 +68,7 @@ fun PermissionDialog(pending: PendingPermission, onOption: (String) -> Unit, onC
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (titleIsLong) CodeBox(title, caption = "title")
                 toolCall.rawInput?.let { CodeBox(it.toString(), caption = "input", maxLines = 12) }
                 Text(
                     "The agent is waiting for your answer.",
@@ -82,6 +86,8 @@ fun PermissionDialog(pending: PendingPermission, onOption: (String) -> Unit, onC
         },
     )
 }
+
+private const val TITLE_MAX_CHARS = 60
 
 @Composable
 private fun OptionButton(option: PermissionOption, onClick: () -> Unit) {
