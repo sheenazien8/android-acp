@@ -9,14 +9,19 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
+import com.lakasir.acp.ui.connection.ConnectionScreen
 
 @Composable
 fun AppNavHost() {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = Connections) {
         composable<Connections> {
+            ConnectionScreen(onOpenProfile = { navController.navigate(Sessions(it)) { launchSingleTop = true } })
+        }
+        composable<Sessions> { entry ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Connections")
+                Text("Sessions for profile ${entry.toRoute<Sessions>().profileId}")
             }
         }
     }

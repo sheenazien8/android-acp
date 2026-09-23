@@ -31,4 +31,15 @@
 - Bash: `./gradlew assembleDebug`
 
 ## Implementation
-<!-- Write you've done in here -->
+- `ui/AppViewModelProvider.kt`: manual-DI `viewModelFactory` reading `AcpApp.container`
+- Shared components in `ui/components/`: `ConnectionStatusIndicator` (dot + label, optional `profileId` scoping, one merged TalkBack description), `leftBorder` modifier, `SwipeToDelete` (swipe opens a confirmation instead of deleting immediately), `EmptyState`, `relativeTime`
+- `ui/connection/ProfileForm.kt`: form state + validation (bare host, port 1–65535, absolute POSIX or Windows cwd; name defaults to host)
+- `ui/connection/ConnectionViewModel.kt`: profiles, connection state, form, connect/disconnect/delete; opens Sessions automatically once the profile the user connected reaches `Connected`
+- `ui/connection/ConnectionScreen.kt`: `TopAppBar` + status indicator, FAB "Add connection", rows with accent left border when connected, host/port/cwd in mono, inline status line (error + retry countdown / reconnect attempt / agent name / last connected), Edit icon, Connect (tonal) / Disconnect (outlined), swipe-to-delete with dialog, empty state, 640dp max width; dark + light previews
+- `ui/connection/ProfileFormSheet.kt`: `ModalBottomSheet` with `OutlinedTextField`s, mono for host/port/cwd, digits-only port, errors via `supportingText`, `imePadding`
+- `AppNavHost`: Connections screen wired; Sessions is a placeholder until plan 07
+- Changes from plan:
+  - Form state lives in the ViewModel instead of `rememberSaveable`: it survives rotation just the same and keeps validation out of the UI
+  - Tapping a row opens its sessions even when offline, so past history can be read
+- Tests: `ProfileFormTest` (5); 43 total, all pass
+- Verified: `./gradlew assembleDebug testDebugUnitTest` OK
