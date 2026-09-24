@@ -16,7 +16,23 @@ data class ConnectionProfileEntity(
     val cwd: String,
     val createdAt: Long,
     val lastConnectedAt: Long? = null,
-)
+    @ColumnInfo(defaultValue = ConnectionScheme.WS) val scheme: String = ConnectionScheme.WS,
+    @ColumnInfo(defaultValue = DEFAULT_PATH) val path: String = DEFAULT_PATH,
+    val authToken: String? = null,
+    @ColumnInfo(defaultValue = "0") val allowInsecureTls: Boolean = false,
+) {
+    override fun toString(): String =
+        "ConnectionProfileEntity(id=$id, name=$name, $scheme://$host:$port$path, token=${if (authToken.isNullOrEmpty()) "none" else "***"})"
+
+    companion object {
+        const val DEFAULT_PATH = "/acp"
+    }
+}
+
+object ConnectionScheme {
+    const val WS = "ws"
+    const val WSS = "wss"
+}
 
 enum class SessionStatus { ACTIVE, CLOSED, ERROR }
 

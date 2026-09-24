@@ -34,6 +34,7 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 | 13 | [Auto mode](13-auto-mode.md) | 09, 12 |
 | 14 | [File manager](14-file-manager.md) | 08, 10 |
 | 15 | [Git support](15-git-support.md) | 14 |
+| 16 | [Public connections](16-public-connections.md) | 10, 14 |
 
 ## Assumptions
 - `cwd` (absolute path on the bridge machine) is stored per `ConnectionProfile` (confirmed by user), because ACP `session/new` requires it
@@ -49,7 +50,7 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - Workspace features (plans 14–15) use `_lakasir/*` ACP extension methods answered by the bridge itself, on the same WebSocket; paths are relative to the profile `cwd`
 
 ## Notes
-- Out of scope / TODO: mDNS discovery, TLS/auth (more important once plan 14 allows file writes), fs/terminal client capabilities, git push/pull/checkout, voice, agent-side session modes (`session/set_mode`)
+- Out of scope / TODO: mDNS discovery, per-user accounts/pairing (plan 16 adds one shared token + TLS), fs/terminal client capabilities, git push/pull/checkout, voice, agent-side session modes (`session/set_mode`)
 - Background connection and notifications, first out of scope, were added in plan 11
 - Every plan ends with `./gradlew assembleDebug` passing
 
@@ -64,10 +65,11 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 
 ## Implementation
 - Plans 01–09 implemented, one commit each (see each plan's Implementation section for details and any deviations)
-- Plans 10–13 implemented (multiple connections, background service + notifications, session rename/delete, auto mode) but not committed yet
-- Room database is at version 2 (plan 13 adds `sessions.autoApprove` via `MIGRATION_1_2`)
+- Plans 10–13 implemented (multiple connections, background service + notifications, session rename/delete, auto mode), one commit each
+- Room database is at version 3 (plan 13 adds `sessions.autoApprove` via `MIGRATION_1_2`; plan 16 adds profile `scheme`, `path`, `authToken`, `allowInsecureTls` via `MIGRATION_2_3`)
 - 68 JVM unit tests after plan 13, all passing; `lintDebug` passes
 - Plan 14 implemented (workspace sidebar, file viewer/editor with markdown preview, attach to prompt) with a new Node bridge in `bridge/` that replaces websocat; 98 JVM unit tests + 18 bridge tests passing
 - Plan 15 implemented (Git tab: status, diffs, stage/unstage, commit, history); 108 JVM unit tests + 28 bridge tests passing
+- Plan 16 implemented (`ws`/`wss` + path + Bearer token per profile, optional self-signed TLS, cleartext only in debug builds, bridge `--token` and `--tls-cert/--tls-key`); 124 JVM unit tests + 32 bridge tests passing
 - Debug APK installed over adb on a Pixel 7a (Android 15); the app launches and the Connections screen renders
 - Not yet verified: end-to-end against a real ACP bridge (connect → initialize → new session → prompt streaming → tool calls → permission → cancel)

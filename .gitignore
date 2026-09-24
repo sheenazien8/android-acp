@@ -6,4 +6,4 @@ local.properties
 .DS_Store
 captures/
 .kotlin/
-bridge/node_modules/
+node_modules/

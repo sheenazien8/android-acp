@@ -3,6 +3,7 @@ package com.lakasir.acp.data.repository
 import android.util.Log
 import com.lakasir.acp.acp.AcpClient
 import com.lakasir.acp.acp.AcpClientFactory
+import com.lakasir.acp.acp.AcpEndpoint
 import com.lakasir.acp.acp.AcpEvent
 import com.lakasir.acp.acp.AcpException
 import com.lakasir.acp.acp.BridgeFeatures
@@ -128,7 +129,7 @@ class AcpRepository(
 
     fun connect(profile: ConnectionProfileEntity) {
         disconnect(profile.id)
-        val client = clientFactory.create(scope)
+        val client = clientFactory.create(scope, profile.allowInsecureTls)
         clients[profile.id] = client
         loadingRemoteIds[profile.id] = mutableSetOf()
         scope.launch { client.events.collect { event -> handleEvent(profile.id, event) } }
@@ -252,9 +253,14 @@ class AcpRepository(
         var attempt = 0
         while (coroutineContext.isActive) {
             updateConnectionState(profile.id, ConnectionState.Connecting(profile.id, attempt))
-            client.connect(profile.host, profile.port)
+            val endpoint = runCatching { AcpEndpoint.from(profileDao.get(profile.id) ?: profile) }.getOrNull()
             var reason = "Connection closed"
-            val opened = client.state.first { it != TransportState.Connecting }
+            val opened = if (endpoint == null) {
+                TransportState.Failed(INVALID_ADDRESS)
+            } else {
+                client.connect(endpoint)
+                client.state.first { it != TransportState.Connecting }
+            }
             if (opened == TransportState.Connected) {
                 try {
                     val agent = client.initialize()
@@ -418,6 +424,7 @@ class AcpRepository(
     companion object {
         private const val TAG = "AcpRepository"
         const val DEFAULT_TITLE = "New session"
+        const val INVALID_ADDRESS = "Invalid bridge address"
         private const val STOP_END_TURN = "end_turn"
         private const val MAX_BACKOFF_MS = 30_000L
         const val MAX_TITLE_LENGTH = 60

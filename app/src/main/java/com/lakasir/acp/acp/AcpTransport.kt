@@ -11,7 +11,9 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import java.net.UnknownServiceException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLException
 
 sealed interface TransportState {
     data object Disconnected : TransportState
@@ -23,7 +25,7 @@ sealed interface TransportState {
 interface AcpTransport {
     val incoming: Flow<String>
     val state: StateFlow<TransportState>
-    fun connect(url: String)
+    fun connect(url: String, headers: Map<String, String> = emptyMap())
     fun send(text: String): Boolean
     fun close()
 }
@@ -41,10 +43,11 @@ class OkHttpAcpTransport(
     @Volatile
     private var socket: WebSocket? = null
 
-    override fun connect(url: String) {
+    override fun connect(url: String, headers: Map<String, String>) {
         socket?.cancel()
         _state.value = TransportState.Connecting
-        socket = client.newWebSocket(Request.Builder().url(url).build(), Listener())
+        val request = Request.Builder().url(url).apply { headers.forEach { (name, value) -> header(name, value) } }.build()
+        socket = client.newWebSocket(request, Listener())
     }
 
     override fun send(text: String): Boolean {
@@ -83,12 +86,26 @@ class OkHttpAcpTransport(
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (webSocket === socket) {
                 socket = null
-                _state.value = TransportState.Failed(t.message ?: t.javaClass.simpleName)
+                _state.value = TransportState.Failed(failureReason(t, response?.code))
             }
         }
     }
 
     companion object {
+        const val TOKEN_REJECTED = "Invalid or missing token"
+        const val BRIDGE_NOT_READY = "Bridge is not ready"
+        const val TLS_FAILED = "TLS handshake failed"
+        const val CLEARTEXT_BLOCKED = "Unencrypted ws:// is not allowed in this build. Use wss://"
+
+        fun failureReason(error: Throwable, responseCode: Int?): String = when {
+            responseCode == 401 || responseCode == 403 -> TOKEN_REJECTED
+            responseCode == 503 -> BRIDGE_NOT_READY
+            responseCode != null && responseCode >= 400 -> "Bridge refused the connection (HTTP $responseCode)"
+            error is SSLException -> TLS_FAILED
+            error is UnknownServiceException && error.message.orEmpty().contains("CLEARTEXT") -> CLEARTEXT_BLOCKED
+            else -> error.message ?: error.javaClass.simpleName
+        }
+
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)

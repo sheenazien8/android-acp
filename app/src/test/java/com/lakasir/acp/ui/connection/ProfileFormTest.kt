@@ -40,4 +40,49 @@ class ProfileFormTest {
         assertEquals("192.168.1.10", valid.toEntity().name)
         assertEquals(8080, valid.toEntity().port)
     }
+
+    @Test
+    fun `path is normalized and validated`() {
+        assertEquals("/acp", valid.copy(path = "").validate().toEntity().path)
+        assertEquals("/bridge", valid.copy(path = "bridge/").validate().toEntity().path)
+        assertNotNull(valid.copy(path = "/a b").validate().pathError)
+        assertNotNull(valid.copy(path = "/acp?x=1").validate().pathError)
+    }
+
+    @Test
+    fun `host with a path or invalid characters is rejected`() {
+        assertNotNull(valid.copy(host = "example.com/acp").validate().hostError)
+        assertNotNull(valid.copy(host = "a..b").validate().hostError)
+        assertTrue(valid.copy(host = "bridge.example.com").validate().isValid)
+    }
+
+    @Test
+    fun `token is trimmed and optional`() {
+        assertEquals(null, valid.toEntity().authToken)
+        assertEquals("abc", valid.copy(token = "  abc ").toEntity().authToken)
+        assertEquals(null, valid.copy(token = "   ").toEntity().authToken)
+    }
+
+    @Test
+    fun `saved token is kept unless replaced or removed and never loaded into the field`() {
+        val profile = valid.copy(id = 3, token = "first").toEntity()
+        val edit = ProfileForm.from(profile)
+        assertEquals("", edit.token)
+        assertTrue(edit.hasSavedToken)
+        assertEquals("first", edit.toEntity().authToken)
+        assertEquals("second", edit.copy(token = "second").toEntity().authToken)
+        assertEquals(null, edit.copy(savedToken = null).toEntity().authToken)
+        assertFalse(edit.toString().contains("first"))
+    }
+
+    @Test
+    fun `scheme and insecure tls round trip`() {
+        val secure = valid.copy(scheme = "wss", allowInsecureTls = true).toEntity()
+        assertEquals("wss", secure.scheme)
+        assertTrue(secure.allowInsecureTls)
+        val back = ProfileForm.from(secure)
+        assertEquals("wss", back.scheme)
+        assertTrue(back.allowInsecureTls)
+        assertFalse(valid.copy(scheme = "ws", allowInsecureTls = true).toEntity().allowInsecureTls)
+    }
 }

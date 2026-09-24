@@ -78,8 +78,12 @@ class AcpClient(
     }
 
     fun connect(host: String, port: Int) {
+        connect(AcpEndpoint.of(host, port))
+    }
+
+    fun connect(endpoint: AcpEndpoint) {
         agentInfo = null
-        transport.connect("ws://$host:$port${AcpMethods.ENDPOINT_PATH}")
+        transport.connect(endpoint.url, endpoint.headers)
     }
 
     fun disconnect() {

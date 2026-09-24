@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,6 +20,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +46,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.lakasir.acp.acp.AcpEndpoint
 import com.lakasir.acp.data.local.ConnectionProfileEntity
 import com.lakasir.acp.data.repository.ConnectionState
 import com.lakasir.acp.ui.AppViewModelProvider
@@ -187,11 +191,7 @@ private fun ProfileRow(
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(profile.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    "${profile.host}:${profile.port}",
-                    style = AcpTheme.code.codeSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                ProfileAddress(profile)
                 Text(
                     profile.cwd,
                     style = AcpTheme.code.codeSmall,
@@ -243,6 +243,7 @@ private fun ProfileStatusLine(profile: ConnectionProfileEntity, state: Connectio
 private val previewProfiles = listOf(
     ConnectionProfileEntity(1, "Workstation", "192.168.1.10", 8080, "/home/dev/project", 0, System.currentTimeMillis() - 3_600_000),
     ConnectionProfileEntity(2, "Build box", "192.168.1.42", 9000, "/srv/repo", 0, null),
+    ConnectionProfileEntity(3, "Cloud", "bridge.example.com", 443, "/srv/app", 0, null, scheme = "wss", authToken = "preview"),
 )
 
 private val previewStates = mapOf(
@@ -267,5 +268,35 @@ private fun ConnectionDarkPreview() {
 private fun ConnectionLightPreview() {
     AcpTheme(darkTheme = false) {
         ConnectionContent(previewProfiles, emptyMap(), {}, {}, {}, {}, {}, {})
+    }
+}
+
+@Composable
+private fun ProfileAddress(profile: ConnectionProfileEntity) {
+    val endpoint = remember(profile) { runCatching { AcpEndpoint.from(profile) }.getOrNull() }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (endpoint?.isSecure == true) {
+            Icon(
+                Icons.Outlined.Lock,
+                contentDescription = if (endpoint.allowInsecureTls) "Encrypted, certificate not verified" else "Encrypted",
+                modifier = Modifier.padding(end = 4.dp).size(12.dp),
+                tint = if (endpoint.allowInsecureTls) AcpTheme.extended.warning else AcpTheme.extended.accentText,
+            )
+        }
+        Text(
+            endpoint?.url ?: "${profile.host}:${profile.port}",
+            style = AcpTheme.code.codeSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (endpoint?.hasToken == true) {
+            Icon(
+                Icons.Outlined.Key,
+                contentDescription = "Uses a token",
+                modifier = Modifier.padding(start = 4.dp).size(12.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

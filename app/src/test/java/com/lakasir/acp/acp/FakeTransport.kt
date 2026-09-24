@@ -17,7 +17,12 @@ class FakeTransport : AcpTransport {
     private val _sentFlow = MutableStateFlow<List<String>>(emptyList())
     val sentFlow: StateFlow<List<String>> = _sentFlow.asStateFlow()
 
-    override fun connect(url: String) {
+    var lastUrl: String? = null
+    var lastHeaders: Map<String, String> = emptyMap()
+
+    override fun connect(url: String, headers: Map<String, String>) {
+        lastUrl = url
+        lastHeaders = headers
         state.value = TransportState.Connected
     }
 
