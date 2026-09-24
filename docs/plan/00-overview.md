@@ -37,6 +37,7 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 | 16 | [Public connections](16-public-connections.md) | 10, 14 |
 | 17 | [Fix offline indicator](17-fix-offline-indicator.md) | 05, 10 |
 | 18 | [Agent control](18-agent-control.md) | 03, 05, 08 |
+| 20 | [Connection switcher](20-connection-switcher.md) | 07, 10 |
 
 ## Assumptions
 - `cwd` (absolute path on the bridge machine) is stored per `ConnectionProfile` (confirmed by user), because ACP `session/new` requires it
@@ -48,7 +49,7 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - UI follows the project skill `mobile-android-design` (Material 3 + Compose), with these project-specific deviations:
   - Dynamic color (Material You) is **off**: the fixed brand palette and single teal accent from the spec win over wallpaper colors
   - Skill's rounded 12–16dp cards/avatars are **not** used; blocks are flat with a 4dp radius and role-colored left border (spec's "tool, not chatbot" direction)
-  - No bottom nav / drawer: the app is a linear stack (Connections → Sessions → Chat). Exception (plans 14–15): the chat screen has an end-side workspace sidebar (Files | Git)
+  - No bottom nav / drawer: the app is a linear stack (Connections → Sessions → Chat). Exceptions: the chat screen has an end-side workspace sidebar (Files | Git, plans 14–15); the sessions screen has a start-side connection switcher drawer (plan 20)
 - Workspace features (plans 14–15) use `_lakasir/*` ACP extension methods answered by the bridge itself, on the same WebSocket; paths are relative to the profile `cwd`
 
 ## Notes
@@ -76,5 +77,6 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - Plan 16 implemented (`ws`/`wss` + path + Bearer token per profile, optional self-signed TLS, cleartext only in debug builds, bridge `--token` and `--tls-cert/--tls-key`); 124 JVM unit tests + 32 bridge tests passing
 - Plan 17 pending (offline indicator fix)
 - Plan 18 implemented (model picker, context-usage bar, slash-command autocomplete in chat); 148 JVM unit tests + 32 bridge tests passing
+- Plan 20 implemented (connection switcher drawer on the sessions screen)
 - Debug APK installed over adb on a Pixel 7a (Android 15); the app launches and the Connections screen renders
 - Not yet verified: end-to-end against a real ACP bridge (connect → initialize → new session → prompt streaming → tool calls → permission → cancel)

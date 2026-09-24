@@ -1,10 +1,12 @@
 package com.lakasir.acp.ui.sessions
 
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -17,10 +19,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -30,6 +33,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -38,19 +43,23 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lakasir.acp.acp.AgentInfo
@@ -65,11 +74,13 @@ import com.lakasir.acp.ui.components.SwipeToDelete
 import com.lakasir.acp.ui.components.leftBorder
 import com.lakasir.acp.ui.components.relativeTime
 import com.lakasir.acp.ui.theme.AcpTheme
+import kotlinx.coroutines.launch
 
 @Composable
 fun SessionsScreen(
     isExpanded: Boolean,
     onBack: () -> Unit,
+    onSwitchProfile: (Long) -> Unit,
     onOpenSession: (Long) -> Unit,
     detailPane: @Composable (sessionId: Long?) -> Unit,
     viewModel: SessionsViewModel = viewModel(factory = AppViewModelProvider.Factory),
@@ -78,11 +89,16 @@ fun SessionsScreen(
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
     val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
     val busy by viewModel.busySessions.collectAsStateWithLifecycle()
+    val profiles by viewModel.profiles.collectAsStateWithLifecycle()
+    val connectionStates by viewModel.connectionStates.collectAsStateWithLifecycle()
     val creating by viewModel.creating.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val createdSession by viewModel.createdSession.collectAsStateWithLifecycle()
     var selectedId by rememberSaveable { mutableStateOf<Long?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
 
     val open: (Long) -> Unit = { id -> if (isExpanded) selectedId = id else onOpenSession(id) }
 
@@ -113,7 +129,7 @@ fun SessionsScreen(
             creating = creating,
             selectedId = if (isExpanded) selectedId else null,
             snackbarHostState = snackbarHostState,
-            onBack = onBack,
+            onOpenDrawer = { scope.launch { drawerState.open() } },
             onOpen = open,
             onCreate = viewModel::createSession,
             onConnect = viewModel::connect,
@@ -123,14 +139,40 @@ fun SessionsScreen(
         )
     }
 
-    if (isExpanded) {
-        Row(Modifier.fillMaxSize()) {
-            list(Modifier.width(360.dp).fillMaxHeight())
-            VerticalDivider(color = MaterialTheme.colorScheme.outline)
-            Box(Modifier.weight(1f).fillMaxHeight()) { detailPane(selectedId) }
+    BoxWithConstraints {
+        val drawerWidth = min(320.dp, maxWidth * 0.85f)
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            gesturesEnabled = drawerState.isOpen,
+            drawerContent = {
+                ModalDrawerSheet(
+                    modifier = Modifier.width(drawerWidth),
+                    drawerShape = RectangleShape,
+                    drawerContainerColor = MaterialTheme.colorScheme.surface,
+                ) {
+                    ConnectionSwitcher(
+                        profiles = profiles,
+                        connectionStates = connectionStates,
+                        currentProfileId = viewModel.profileId,
+                        onSelect = { id ->
+                            scope.launch { drawerState.close() }
+                            if (id != viewModel.profileId) onSwitchProfile(id)
+                        },
+                        onManage = onBack,
+                    )
+                }
+            },
+        ) {
+            if (isExpanded) {
+                Row(Modifier.fillMaxSize()) {
+                    list(Modifier.width(360.dp).fillMaxHeight())
+                    VerticalDivider(color = MaterialTheme.colorScheme.outline)
+                    Box(Modifier.weight(1f).fillMaxHeight()) { detailPane(selectedId) }
+                }
+            } else {
+                list(Modifier.fillMaxSize())
+            }
         }
-    } else {
-        list(Modifier.fillMaxSize())
     }
 }
 
@@ -145,7 +187,7 @@ fun SessionsContent(
     creating: Boolean,
     selectedId: Long?,
     snackbarHostState: SnackbarHostState,
-    onBack: () -> Unit,
+    onOpenDrawer: () -> Unit,
     onOpen: (Long) -> Unit,
     onCreate: () -> Unit,
     onConnect: () -> Unit,
@@ -178,8 +220,8 @@ fun SessionsContent(
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to connections")
+                        IconButton(onClick = onOpenDrawer) {
+                            Icon(Icons.Filled.Menu, contentDescription = "Switch connection")
                         }
                     },
                     actions = { ConnectionStatusIndicator(connectionState, profileId = profileId) },
@@ -333,7 +375,7 @@ private fun SessionsDarkPreview() {
             creating = false,
             selectedId = null,
             snackbarHostState = SnackbarHostState(),
-            onBack = {}, onOpen = {}, onCreate = {}, onConnect = {}, onRename = { _, _ -> }, onDelete = {},
+            onOpenDrawer = {}, onOpen = {}, onCreate = {}, onConnect = {}, onRename = { _, _ -> }, onDelete = {},
         )
     }
 }
@@ -351,7 +393,7 @@ private fun SessionsLightPreview() {
             creating = false,
             selectedId = 2,
             snackbarHostState = SnackbarHostState(),
-            onBack = {}, onOpen = {}, onCreate = {}, onConnect = {}, onRename = { _, _ -> }, onDelete = {},
+            onOpenDrawer = {}, onOpen = {}, onCreate = {}, onConnect = {}, onRename = { _, _ -> }, onDelete = {},
         )
     }
 }

@@ -34,6 +34,11 @@ class SessionsViewModel(
         .map { it[profileId] ?: ConnectionState.Disconnected }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionState.Disconnected)
 
+    val profiles: StateFlow<List<ConnectionProfileEntity>> = repository.observeProfiles()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val connectionStates: StateFlow<Map<Long, ConnectionState>> = repository.connectionStates
+
     val busySessions: StateFlow<Set<Long>> = repository.busySessions
 
     private val _creating = MutableStateFlow(false)

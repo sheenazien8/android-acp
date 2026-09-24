@@ -30,6 +30,7 @@ fun AppNavHost(widthSizeClass: WindowWidthSizeClass) {
                 SessionsScreen(
                     isExpanded = isExpanded,
                     onBack = { navController.popBackStack() },
+                    onSwitchProfile = { id -> navController.navigate(Sessions(id)) { popUpTo<Connections>() } },
                     onOpenSession = { navController.navigate(Chat(it)) { launchSingleTop = true } },
                     detailPane = { sessionId ->
                         if (sessionId == null) {
