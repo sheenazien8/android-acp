@@ -7,11 +7,12 @@ import com.lakasir.acp.data.model.PermissionRecord
 import com.lakasir.acp.data.model.PlanCodec
 import com.lakasir.acp.data.model.PlanItem
 import com.lakasir.acp.data.model.ToolCallState
+import com.lakasir.acp.data.model.UserPromptPayload
 
 sealed interface ChatItem {
     val id: Long
 
-    data class UserText(override val id: Long, val text: String) : ChatItem
+    data class UserText(override val id: Long, val text: String, val attachments: List<String> = emptyList()) : ChatItem
     data class AgentText(override val id: Long, val text: String) : ChatItem
     data class Thought(override val id: Long, val text: String) : ChatItem
     data class Tool(override val id: Long, val state: ToolCallState) : ChatItem
@@ -23,7 +24,7 @@ sealed interface ChatItem {
     companion object {
         fun from(message: MessageEntity): ChatItem = when (message.type) {
             MessageType.TEXT -> when (message.role) {
-                MessageRole.USER -> UserText(message.id, message.content)
+                MessageRole.USER -> UserText(message.id, message.content, UserPromptPayload.decode(message.rawJson).attachments)
                 MessageRole.AGENT -> AgentText(message.id, message.content)
                 else -> SystemNote(message.id, message.content)
             }

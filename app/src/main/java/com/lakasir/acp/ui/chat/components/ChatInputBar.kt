@@ -35,6 +35,8 @@ fun ChatInputBar(
     onSend: () -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
+    attachments: List<String> = emptyList(),
+    onRemoveAttachment: (String) -> Unit = {},
 ) {
     Column(modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
@@ -45,6 +47,9 @@ fun ChatInputBar(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        if (attachments.isNotEmpty()) {
+            AttachmentInputChips(attachments, onRemoveAttachment, Modifier.padding(top = 6.dp))
         }
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -74,7 +79,7 @@ fun ChatInputBar(
                 FilledIconButton(
                     onClick = onSend,
                     modifier = Modifier.padding(bottom = 4.dp),
-                    enabled = enabled && text.isNotBlank(),
+                    enabled = enabled && (text.isNotBlank() || attachments.isNotEmpty()),
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }

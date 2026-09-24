@@ -1,13 +1,16 @@
 package com.lakasir.acp.ui.chat
 
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -16,12 +19,16 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
@@ -29,20 +36,26 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lakasir.acp.acp.AgentInfo
@@ -52,6 +65,7 @@ import com.lakasir.acp.data.model.PlanItem
 import com.lakasir.acp.data.model.ToolCallState
 import com.lakasir.acp.data.repository.ConnectionState
 import com.lakasir.acp.ui.chat.components.AgentText
+import com.lakasir.acp.ui.chat.components.AttachmentList
 import com.lakasir.acp.ui.chat.components.ChatInputBar
 import com.lakasir.acp.ui.chat.components.ErrorRow
 import com.lakasir.acp.ui.chat.components.LogRow
@@ -66,6 +80,7 @@ import com.lakasir.acp.ui.sessions.DeleteSessionDialog
 import com.lakasir.acp.ui.sessions.RenameSessionDialog
 import com.lakasir.acp.ui.sessions.SessionMenuButton
 import com.lakasir.acp.ui.theme.AcpTheme
+import com.lakasir.acp.ui.workspace.WorkspaceSidebar
 import kotlinx.coroutines.launch
 
 @Composable
@@ -73,6 +88,7 @@ fun ChatScreen(
     sessionId: Long,
     onBack: (() -> Unit)?,
     onDeleted: () -> Unit,
+    onOpenFile: (String) -> Unit = {},
     viewModel: ChatViewModel = viewModel(key = "chat-$sessionId", factory = ChatViewModel.factory(sessionId)),
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
@@ -80,6 +96,7 @@ fun ChatScreen(
     val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
     val availability by viewModel.availability.collectAsStateWithLifecycle()
+    val attachments by viewModel.attachments.collectAsStateWithLifecycle()
     var input by rememberSaveable(sessionId) { mutableStateOf("") }
 
     ChatContent(
@@ -101,6 +118,9 @@ fun ChatScreen(
         onDelete = { viewModel.delete(onDeleted) },
         onAutoApproveChange = viewModel::setAutoApprove,
         onBack = onBack,
+        attachments = attachments,
+        onRemoveAttachment = viewModel::removeAttachment,
+        sidebar = { WorkspaceSidebar(sessionId = sessionId, onOpenFile = onOpenFile) },
     )
 }
 
@@ -122,6 +142,71 @@ fun ChatContent(
     onDelete: () -> Unit,
     onAutoApproveChange: (Boolean) -> Unit,
     onBack: (() -> Unit)?,
+    attachments: List<String> = emptyList(),
+    onRemoveAttachment: (String) -> Unit = {},
+    sidebar: (@Composable () -> Unit)? = null,
+) {
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
+
+    val chat: @Composable () -> Unit = {
+        ChatScaffold(
+            title, profileId, autoApprove, items, connectionState, isBusy, availability, input,
+            onInputChange, onSend, onCancel, onRename, onDelete, onAutoApproveChange, onBack,
+            attachments, onRemoveAttachment,
+            onOpenSidebar = sidebar?.let { { scope.launch { drawerState.open() } } },
+        )
+    }
+    if (sidebar == null) {
+        chat()
+        return
+    }
+
+    val layoutDirection = LocalLayoutDirection.current
+    BoxWithConstraints {
+        val sidebarWidth = min(360.dp, maxWidth * 0.85f)
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            ModalNavigationDrawer(
+                drawerState = drawerState,
+                gesturesEnabled = drawerState.isOpen,
+                drawerContent = {
+                    CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+                        ModalDrawerSheet(
+                            modifier = Modifier.width(sidebarWidth),
+                            drawerShape = RectangleShape,
+                            drawerContainerColor = MaterialTheme.colorScheme.surface,
+                        ) { sidebar() }
+                    }
+                },
+            ) {
+                CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) { chat() }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChatScaffold(
+    title: String,
+    profileId: Long?,
+    autoApprove: Boolean,
+    items: List<ChatItem>,
+    connectionState: ConnectionState,
+    isBusy: Boolean,
+    availability: InputAvailability,
+    input: String,
+    onInputChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onCancel: () -> Unit,
+    onRename: (String) -> Unit,
+    onDelete: () -> Unit,
+    onAutoApproveChange: (Boolean) -> Unit,
+    onBack: (() -> Unit)?,
+    attachments: List<String>,
+    onRemoveAttachment: (String) -> Unit,
+    onOpenSidebar: (() -> Unit)?,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var showRename by rememberSaveable { mutableStateOf(false) }
@@ -168,6 +253,11 @@ fun ChatContent(
                             tint = if (autoApprove) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    if (onOpenSidebar != null) {
+                        IconButton(onClick = onOpenSidebar) {
+                            Icon(Icons.Outlined.FolderOpen, contentDescription = "Open workspace files")
+                        }
+                    }
                     SessionMenuButton(
                         expanded = menuExpanded,
                         onExpandedChange = { menuExpanded = it },
@@ -187,6 +277,8 @@ fun ChatContent(
                 hint = availability.hint(),
                 onSend = onSend,
                 onCancel = onCancel,
+                attachments = attachments,
+                onRemoveAttachment = onRemoveAttachment,
             )
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -261,7 +353,10 @@ fun ChatContent(
 private fun ChatItemRow(item: ChatItem, streaming: Boolean) {
     when (item) {
         is ChatItem.UserText -> LogRow(borderColor = AcpTheme.extended.roleUser, label = "you") {
-            Text(item.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            if (item.text.isNotBlank()) {
+                Text(item.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            }
+            if (item.attachments.isNotEmpty()) AttachmentList(item.attachments)
         }
         is ChatItem.AgentText -> LogRow(borderColor = AcpTheme.extended.roleAgent, label = "agent") {
             AgentText(item.text, streaming = streaming)
@@ -290,7 +385,7 @@ fun ChatPlaceholder() {
 }
 
 private val previewItems = listOf(
-    ChatItem.UserText(1, "Make the login test stable"),
+    ChatItem.UserText(1, "Make the login test stable", listOf("src/test/LoginTest.kt")),
     ChatItem.Thought(2, "The test waits on a fixed delay, which races with token refresh."),
     ChatItem.Plan(3, listOf(PlanItem("Find the race", "completed"), PlanItem("Patch the test", "in_progress"))),
     ChatItem.Tool(

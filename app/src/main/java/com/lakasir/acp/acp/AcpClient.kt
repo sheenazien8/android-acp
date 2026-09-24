@@ -30,6 +30,24 @@ data class AgentInfo(
     val loadSession: Boolean,
 )
 
+data class ResourceLink(val uri: String, val name: String) {
+    companion object {
+        fun forWorkspaceFile(cwd: String, path: String): ResourceLink {
+            val absolute = cwd.trimEnd('/') + "/" + path.trimStart('/')
+            return ResourceLink(uri = "file://${encodePath(absolute)}", name = path.substringAfterLast('/'))
+        }
+
+        private const val UNRESERVED = "-._~/"
+
+        private fun encodePath(path: String): String = buildString {
+            path.toByteArray(Charsets.UTF_8).forEach { byte ->
+                val c = (byte.toInt() and 0xFF).toChar()
+                if (c.isLetterOrDigit() && c.code < 0x80 || c in UNRESERVED) append(c) else append("%%%02X".format(byte.toInt() and 0xFF))
+            }
+        }
+    }
+}
+
 class AcpClient(
     private val transport: AcpTransport,
     scope: CoroutineScope,
@@ -117,14 +135,23 @@ class AcpClient(
         request(AcpMethods.SESSION_LOAD, params, LOAD_TIMEOUT_MS)
     }
 
-    suspend fun prompt(sessionId: String, text: String): String? {
+    suspend fun prompt(sessionId: String, text: String, links: List<ResourceLink> = emptyList()): String? {
         val params = buildJsonObject {
             put("sessionId", sessionId)
             put("prompt", buildJsonArray {
-                add(buildJsonObject {
-                    put("type", "text")
-                    put("text", text)
-                })
+                if (text.isNotBlank() || links.isEmpty()) {
+                    add(buildJsonObject {
+                        put("type", PromptBlockType.TEXT)
+                        put("text", text)
+                    })
+                }
+                links.forEach { link ->
+                    add(buildJsonObject {
+                        put("type", PromptBlockType.RESOURCE_LINK)
+                        put("uri", link.uri)
+                        put("name", link.name)
+                    })
+                }
             })
         }
         val result = request(AcpMethods.SESSION_PROMPT, params, timeoutMs = null) as? JsonObject

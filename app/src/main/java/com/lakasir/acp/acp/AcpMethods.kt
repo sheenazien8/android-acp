@@ -45,3 +45,34 @@ object JsonRpcErrorCode {
     const val PARSE_ERROR = -32700
     const val METHOD_NOT_FOUND = -32601
 }
+
+object PromptBlockType {
+    const val TEXT = "text"
+    const val RESOURCE_LINK = "resource_link"
+}
+
+/**
+ * Workspace extension methods answered by the lakasir bridge itself (never forwarded to the agent).
+ * ACP reserves the leading underscore for extensions. Paths are relative to `cwd`.
+ */
+object LakasirMethods {
+    const val HELLO = "_lakasir/hello"
+    const val FS_LIST = "_lakasir/fs/list"
+    const val FS_READ = "_lakasir/fs/read"
+    const val FS_WRITE = "_lakasir/fs/write"
+    const val FS_CREATE = "_lakasir/fs/create"
+    const val FS_RENAME = "_lakasir/fs/rename"
+    const val FS_DELETE = "_lakasir/fs/delete"
+}
+
+object LakasirErrorCode {
+    const val CONFLICT = -32010
+    const val OUTSIDE_WORKSPACE = -32011
+    const val NOT_FOUND = -32012
+    const val ALREADY_EXISTS = -32013
+}
+
+object FsEntryType {
+    const val FILE = "file"
+    const val DIR = "dir"
+}

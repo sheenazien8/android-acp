@@ -10,3 +10,6 @@ data class Sessions(val profileId: Long)
 
 @Serializable
 data class Chat(val sessionId: Long)
+
+@Serializable
+data class FileViewer(val sessionId: Long, val path: String)

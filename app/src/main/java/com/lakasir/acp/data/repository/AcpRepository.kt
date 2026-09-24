@@ -5,9 +5,13 @@ import com.lakasir.acp.acp.AcpClient
 import com.lakasir.acp.acp.AcpClientFactory
 import com.lakasir.acp.acp.AcpEvent
 import com.lakasir.acp.acp.AcpException
+import com.lakasir.acp.acp.BridgeFeatures
 import com.lakasir.acp.acp.PermissionOption
 import com.lakasir.acp.acp.PermissionOptionKind
+import com.lakasir.acp.acp.ResourceLink
+import com.lakasir.acp.acp.ToolCallStatus
 import com.lakasir.acp.acp.TransportState
+import com.lakasir.acp.acp.WorkspaceApi
 import com.lakasir.acp.data.local.AppDatabase
 import com.lakasir.acp.data.local.ConnectionProfileEntity
 import com.lakasir.acp.data.local.MessageEntity
@@ -18,6 +22,7 @@ import com.lakasir.acp.data.local.SessionSummary
 import com.lakasir.acp.data.model.PermissionRecord
 import com.lakasir.acp.data.model.PlanCodec
 import com.lakasir.acp.data.model.ToolCallState
+import com.lakasir.acp.data.model.UserPromptPayload
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -64,6 +69,12 @@ class AcpRepository(
 
     private val _completedTurns = MutableSharedFlow<CompletedTurn>(extraBufferCapacity = 16)
     val completedTurns: SharedFlow<CompletedTurn> = _completedTurns.asSharedFlow()
+
+    private val _bridgeFeatures = MutableStateFlow<Map<Long, BridgeFeatures?>>(emptyMap())
+    val bridgeFeatures: StateFlow<Map<Long, BridgeFeatures?>> = _bridgeFeatures.asStateFlow()
+
+    private val _workspaceChanges = MutableSharedFlow<Long>(extraBufferCapacity = 16)
+    val workspaceChanges: SharedFlow<Long> = _workspaceChanges.asSharedFlow()
 
     private val retrySignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -179,15 +190,27 @@ class AcpRepository(
         }
     }
 
-    fun sendPrompt(localId: Long, text: String) {
+    suspend fun workspace(localSessionId: Long): WorkspaceApi? {
+        val session = sessionDao.get(localSessionId) ?: return null
+        val profile = connectedProfileOrNull(session.connectionProfileId) ?: return null
+        val client = clients[profile.id] ?: return null
+        return WorkspaceApi(client, profile.cwd)
+    }
+
+    fun sendPrompt(localId: Long, text: String, attachments: List<String> = emptyList()) {
         scope.launch {
             val session = sessionDao.get(localId) ?: return@launch
             val client = clients[session.connectionProfileId] ?: return@launch
-            insertMessage(localId, MessageRole.USER, MessageType.TEXT, text)
-            if (session.title == DEFAULT_TITLE) normalizeTitle(text)?.let { sessionDao.updateTitle(localId, it) }
+            val cwd = profileDao.get(session.connectionProfileId)?.cwd ?: return@launch
+            val links = attachments.map { ResourceLink.forWorkspaceFile(cwd, it) }
+            val payload = UserPromptPayload(attachments).takeIf { attachments.isNotEmpty() }?.encode()
+            insertMessage(localId, MessageRole.USER, MessageType.TEXT, text, rawJson = payload)
+            if (session.title == DEFAULT_TITLE) {
+                normalizeTitle(text.ifBlank { links.firstOrNull()?.name.orEmpty() })?.let { sessionDao.updateTitle(localId, it) }
+            }
             _busySessions.update { it + localId }
             try {
-                val stopReason = client.prompt(session.remoteSessionId, text)
+                val stopReason = client.prompt(session.remoteSessionId, text, links)
                 val title = sessionDao.get(localId)?.title ?: return@launch
                 if (stopReason != null && stopReason != STOP_END_TURN) {
                     insertMessage(localId, MessageRole.SYSTEM, MessageType.TEXT, "Stopped: $stopReason")
@@ -238,6 +261,10 @@ class AcpRepository(
                     profileDao.touchLastConnected(profile.id, clock())
                     attempt = 0
                     updateConnectionState(profile.id, ConnectionState.Connected(profile.id, agent))
+                    scope.launch {
+                        val features = WorkspaceApi.hello(client)
+                        if (clients[profile.id] === client) _bridgeFeatures.update { it + (profile.id to features) }
+                    }
                     client.state.first { it != TransportState.Connected }
                 } catch (e: AcpException) {
                     reason = "Initialize failed: ${e.message}"
@@ -260,6 +287,7 @@ class AcpRepository(
         _attachedSessions.update { it - affected }
         _pendingPermissions.update { list -> list.filterNot { it.localSessionId in affected } }
         loadingRemoteIds[profileId]?.clear()
+        _bridgeFeatures.update { it - profileId }
         updateConnectionState(profileId, ConnectionState.Disconnected)
     }
 
@@ -290,10 +318,10 @@ class AcpRepository(
             is AcpEvent.UserMessageChunk -> Unit
             is AcpEvent.ToolCallStarted -> upsertToolCall(localId, event.toolCall.toolCallId, event.raw.toString()) {
                 it?.merge(event.toolCall) ?: ToolCallState.from(event.toolCall)
-            }
+            }.also { if (changesWorkspace(it)) _workspaceChanges.tryEmit(localId) }
             is AcpEvent.ToolCallUpdated -> upsertToolCall(localId, event.toolCall.toolCallId, event.raw.toString()) {
                 it?.merge(event.toolCall) ?: ToolCallState.from(event.toolCall)
-            }
+            }.also { if (changesWorkspace(it)) _workspaceChanges.tryEmit(localId) }
             is AcpEvent.Plan -> {
                 val content = PlanCodec.encode(event.entries)
                 val last = messageDao.last(localId)
@@ -344,13 +372,14 @@ class AcpRepository(
         toolCallId: String,
         rawJson: String,
         transform: (ToolCallState?) -> ToolCallState,
-    ) {
+    ): ToolCallState {
         val existing = messageDao.findToolCall(localId, toolCallId)
-        if (existing == null) {
-            insertMessage(localId, MessageRole.TOOL, MessageType.TOOL_CALL, transform(null).encode(), toolCallId, rawJson)
+        return if (existing == null) {
+            transform(null).also { insertMessage(localId, MessageRole.TOOL, MessageType.TOOL_CALL, it.encode(), toolCallId, rawJson) }
         } else {
-            val next = transform(ToolCallState.decode(existing.content))
-            messageDao.update(existing.copy(content = next.encode(), rawJson = rawJson))
+            transform(ToolCallState.decode(existing.content)).also {
+                messageDao.update(existing.copy(content = it.encode(), rawJson = rawJson))
+            }
         }
     }
 
@@ -401,6 +430,11 @@ class AcpRepository(
         fun autoApproveOption(options: List<PermissionOption>): PermissionOption? =
             options.firstOrNull { it.kind == PermissionOptionKind.ALLOW_ONCE }
                 ?: options.firstOrNull { it.kind == PermissionOptionKind.ALLOW_ALWAYS }
+
+        private val WORKSPACE_TOOL_KINDS = setOf("edit", "delete", "move", "execute")
+
+        fun changesWorkspace(state: ToolCallState): Boolean =
+            state.status == ToolCallStatus.COMPLETED && (state.kind in WORKSPACE_TOOL_KINDS || state.diffs.isNotEmpty())
 
         fun canAppend(last: MessageEntity?, role: MessageRole, type: MessageType): Boolean =
             last != null && last.role == role && last.type == type

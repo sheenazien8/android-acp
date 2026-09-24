@@ -61,6 +61,16 @@ object PlanCodec {
 }
 
 @Serializable
+data class UserPromptPayload(val attachments: List<String> = emptyList()) {
+    fun encode(): String = AcpJson.encodeToString(serializer(), this)
+
+    companion object {
+        fun decode(json: String?): UserPromptPayload =
+            json?.let { runCatching { AcpJson.decodeFromString(serializer(), it) }.getOrNull() } ?: UserPromptPayload()
+    }
+}
+
+@Serializable
 data class PermissionRecord(
     val title: String,
     val kind: String? = null,

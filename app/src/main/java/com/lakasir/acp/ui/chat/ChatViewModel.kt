@@ -10,6 +10,7 @@ import com.lakasir.acp.AcpApp
 import com.lakasir.acp.data.local.SessionEntity
 import com.lakasir.acp.data.repository.AcpRepository
 import com.lakasir.acp.data.repository.ConnectionState
+import com.lakasir.acp.data.repository.WorkspaceRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,6 +32,7 @@ sealed interface InputAvailability {
 class ChatViewModel(
     private val sessionId: Long,
     private val repository: AcpRepository,
+    private val workspace: WorkspaceRepository,
 ) : ViewModel() {
 
     private val mapper = ChatItemMapper()
@@ -50,6 +52,9 @@ class ChatViewModel(
             if (profileId != null) states[profileId] ?: ConnectionState.Disconnected else ConnectionState.Disconnected
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionState.Disconnected)
+
+    val attachments: StateFlow<List<String>> = workspace.attachments(sessionId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val isBusy: StateFlow<Boolean> = repository.busySessions
         .map { sessionId in it }
@@ -90,8 +95,12 @@ class ChatViewModel(
     }
 
     fun send(text: String) {
-        if (text.isBlank()) return
-        repository.sendPrompt(sessionId, text.trim())
+        if (text.isBlank() && attachments.value.isEmpty()) return
+        repository.sendPrompt(sessionId, text.trim(), workspace.takeAttachments(sessionId))
+    }
+
+    fun removeAttachment(path: String) {
+        workspace.detach(sessionId, path)
     }
 
     fun cancel() {
@@ -117,7 +126,7 @@ class ChatViewModel(
         fun factory(sessionId: Long): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val container = (this[APPLICATION_KEY] as AcpApp).container
-                ChatViewModel(sessionId, container.repository)
+                ChatViewModel(sessionId, container.repository, container.workspaceRepository)
             }
         }
     }

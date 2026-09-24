@@ -13,6 +13,7 @@ import com.lakasir.acp.ui.chat.ChatScreen
 import com.lakasir.acp.ui.connection.ConnectionScreen
 import com.lakasir.acp.ui.permission.PermissionHost
 import com.lakasir.acp.ui.sessions.SessionsScreen
+import com.lakasir.acp.ui.workspace.FileViewerScreen
 
 @Composable
 fun AppNavHost(widthSizeClass: WindowWidthSizeClass) {
@@ -29,16 +30,31 @@ fun AppNavHost(widthSizeClass: WindowWidthSizeClass) {
                     onBack = { navController.popBackStack() },
                     onOpenSession = { navController.navigate(Chat(it)) { launchSingleTop = true } },
                     detailPane = { sessionId ->
-                        if (sessionId == null) ChatPlaceholder() else ChatScreen(sessionId = sessionId, onBack = null, onDeleted = {})
+                        if (sessionId == null) {
+                            ChatPlaceholder()
+                        } else {
+                            ChatScreen(
+                                sessionId = sessionId,
+                                onBack = null,
+                                onDeleted = {},
+                                onOpenFile = { navController.navigate(FileViewer(sessionId, it)) },
+                            )
+                        }
                     },
                 )
             }
             composable<Chat> { entry ->
+                val sessionId = entry.toRoute<Chat>().sessionId
                 ChatScreen(
-                    sessionId = entry.toRoute<Chat>().sessionId,
+                    sessionId = sessionId,
                     onBack = { navController.popBackStack() },
                     onDeleted = { navController.popBackStack() },
+                    onOpenFile = { navController.navigate(FileViewer(sessionId, it)) },
                 )
+            }
+            composable<FileViewer> { entry ->
+                val route = entry.toRoute<FileViewer>()
+                FileViewerScreen(sessionId = route.sessionId, path = route.path, onBack = { navController.popBackStack() })
             }
         }
         PermissionHost()
