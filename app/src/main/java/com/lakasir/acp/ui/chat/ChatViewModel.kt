@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.lakasir.acp.acp.SessionControlState
 
 sealed interface InputAvailability {
     data object Ready : InputAvailability
@@ -59,6 +60,10 @@ class ChatViewModel(
     val isBusy: StateFlow<Boolean> = repository.busySessions
         .map { sessionId in it }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    val controls: StateFlow<SessionControlState> = repository.sessionControls
+        .map { it[sessionId] ?: SessionControlState() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SessionControlState())
 
     val availability: StateFlow<InputAvailability> = combine(
         repository.connectionStates,
@@ -105,6 +110,10 @@ class ChatViewModel(
 
     fun cancel() {
         viewModelScope.launch { repository.cancel(sessionId) }
+    }
+
+    fun setModel(value: String) {
+        viewModelScope.launch { repository.setModel(sessionId, value) }
     }
 
     fun rename(title: String) {

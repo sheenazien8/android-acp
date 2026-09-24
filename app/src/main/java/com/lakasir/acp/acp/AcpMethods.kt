@@ -13,9 +13,26 @@ object AcpMethods {
     const val SESSION_LOAD = "session/load"
     const val SESSION_PROMPT = "session/prompt"
     const val SESSION_CANCEL = "session/cancel"
+    const val SESSION_SET_CONFIG_OPTION = "session/set_config_option"
 
     const val SESSION_UPDATE = "session/update"
     const val SESSION_REQUEST_PERMISSION = "session/request_permission"
+}
+
+object SessionConfigCategory {
+    const val MODEL = "model"
+    const val MODE = "mode"
+    const val THOUGHT_LEVEL = "thought_level"
+    const val MODEL_CONFIG = "model_config"
+}
+
+object SessionConfigType {
+    const val SELECT = "select"
+    const val BOOLEAN = "boolean"
+}
+
+object SessionConfigIds {
+    const val MODEL = "model"
 }
 
 object SessionUpdateKind {
@@ -25,6 +42,10 @@ object SessionUpdateKind {
     const val TOOL_CALL = "tool_call"
     const val TOOL_CALL_UPDATE = "tool_call_update"
     const val PLAN = "plan"
+    const val CONFIG_OPTION_UPDATE = "config_option_update"
+    const val AVAILABLE_COMMANDS_UPDATE = "available_commands_update"
+    const val USAGE_UPDATE = "usage_update"
+    const val CURRENT_MODE_UPDATE = "current_mode_update"
 }
 
 object ToolCallStatus {

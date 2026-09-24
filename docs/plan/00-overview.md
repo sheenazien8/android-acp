@@ -35,6 +35,8 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 | 14 | [File manager](14-file-manager.md) | 08, 10 |
 | 15 | [Git support](15-git-support.md) | 14 |
 | 16 | [Public connections](16-public-connections.md) | 10, 14 |
+| 17 | [Fix offline indicator](17-fix-offline-indicator.md) | 05, 10 |
+| 18 | [Agent control](18-agent-control.md) | 03, 05, 08 |
 
 ## Assumptions
 - `cwd` (absolute path on the bridge machine) is stored per `ConnectionProfile` (confirmed by user), because ACP `session/new` requires it
@@ -50,8 +52,9 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - Workspace features (plans 14–15) use `_lakasir/*` ACP extension methods answered by the bridge itself, on the same WebSocket; paths are relative to the profile `cwd`
 
 ## Notes
-- Out of scope / TODO: mDNS discovery, per-user accounts/pairing (plan 16 adds one shared token + TLS), fs/terminal client capabilities, git push/pull/checkout, voice, agent-side session modes (`session/set_mode`)
+- Out of scope / TODO: mDNS discovery, per-user accounts/pairing (plan 16 adds one shared token + TLS), fs/terminal client capabilities, git push/pull/checkout, voice, agent-side session modes (`session/set_mode`), generic reasoning/effort config options
 - Background connection and notifications, first out of scope, were added in plan 11
+- Agent-side model switching, context usage, and slash commands were added in plan 18
 - Every plan ends with `./gradlew assembleDebug` passing
 
 ## Testing
@@ -71,5 +74,7 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - Plan 14 implemented (workspace sidebar, file viewer/editor with markdown preview, attach to prompt) with a new Node bridge in `bridge/` that replaces websocat; 98 JVM unit tests + 18 bridge tests passing
 - Plan 15 implemented (Git tab: status, diffs, stage/unstage, commit, history); 108 JVM unit tests + 28 bridge tests passing
 - Plan 16 implemented (`ws`/`wss` + path + Bearer token per profile, optional self-signed TLS, cleartext only in debug builds, bridge `--token` and `--tls-cert/--tls-key`); 124 JVM unit tests + 32 bridge tests passing
+- Plan 17 pending (offline indicator fix)
+- Plan 18 implemented (model picker, context-usage bar, slash-command autocomplete in chat); 148 JVM unit tests + 32 bridge tests passing
 - Debug APK installed over adb on a Pixel 7a (Android 15); the app launches and the Connections screen renders
 - Not yet verified: end-to-end against a real ACP bridge (connect → initialize → new session → prompt streaming → tool calls → permission → cancel)

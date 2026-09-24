@@ -70,8 +70,39 @@ class AcpEventParserTest {
 
     @Test
     fun `unknown kind is preserved`() {
-        val event = update("""{"sessionUpdate":"available_commands_update","availableCommands":[]}""")
-        assertEquals("available_commands_update", (event as AcpEvent.Unknown).kind)
+        val event = update("""{"sessionUpdate":"__unknown__"}""")
+        assertEquals("__unknown__", (event as AcpEvent.Unknown).kind)
+    }
+
+    @Test
+    fun `config option update is parsed`() {
+        val event = update(
+            """{"sessionUpdate":"config_option_update","configOptions":[{"id":"model","name":"Model","type":"select","currentValue":"claude-3-opus","category":"model","options":[{"value":"claude-3-opus","name":"Claude 3 Opus"},{"value":"claude-3-5-sonnet","name":"Claude 3.5 Sonnet"}]}]}"""
+        ) as AcpEvent.ConfigOptionUpdated
+        assertEquals(1, event.options.size)
+        val option = event.options.first()
+        assertEquals("model", option.id)
+        assertEquals("claude-3-opus", option.currentValue)
+        assertEquals(2, option.choices.size)
+    }
+
+    @Test
+    fun `available commands update is parsed`() {
+        val event = update(
+            """{"sessionUpdate":"available_commands_update","availableCommands":[{"name":"todo","description":"Track a task","input":{"hint":"What should I track?"}}]}"""
+        ) as AcpEvent.CommandsUpdated
+        assertEquals(1, event.commands.size)
+        assertEquals("todo", event.commands.first().name)
+        assertEquals("What should I track?", event.commands.first().hint)
+    }
+
+    @Test
+    fun `usage update is parsed`() {
+        val event = update(
+            """{"sessionUpdate":"usage_update","used":1234,"size":100000}"""
+        ) as AcpEvent.UsageUpdated
+        assertEquals(1234L, event.usage.used)
+        assertEquals(100000L, event.usage.size)
     }
 
     @Test(expected = AcpParseException::class)

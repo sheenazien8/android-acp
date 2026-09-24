@@ -10,6 +10,8 @@ import com.lakasir.acp.acp.BridgeFeatures
 import com.lakasir.acp.acp.PermissionOption
 import com.lakasir.acp.acp.PermissionOptionKind
 import com.lakasir.acp.acp.ResourceLink
+import com.lakasir.acp.acp.SessionControlState
+import com.lakasir.acp.acp.UsageInfo
 import com.lakasir.acp.acp.ToolCallStatus
 import com.lakasir.acp.acp.TransportState
 import com.lakasir.acp.acp.WorkspaceApi
@@ -64,6 +66,9 @@ class AcpRepository(
 
     private val _pendingPermissions = MutableStateFlow<List<PendingPermission>>(emptyList())
     val pendingPermissions: StateFlow<List<PendingPermission>> = _pendingPermissions.asStateFlow()
+
+    private val _sessionControls = MutableStateFlow<Map<Long, SessionControlState>>(emptyMap())
+    val sessionControls: StateFlow<Map<Long, SessionControlState>> = _sessionControls.asStateFlow()
 
     private val _activeProfileIds = MutableStateFlow<Set<Long>>(emptySet())
     val activeProfileIds: StateFlow<Set<Long>> = _activeProfileIds.asStateFlow()
@@ -158,11 +163,11 @@ class AcpRepository(
     suspend fun createSession(profileId: Long): Long {
         val profile = requireConnectedProfile(profileId)
         val client = clients[profileId] ?: throw AcpException.NotConnected()
-        val remoteId = client.newSession(profile.cwd)
+        val created = client.newSession(profile.cwd)
         val now = clock()
         val id = sessionDao.insert(
             SessionEntity(
-                remoteSessionId = remoteId,
+                remoteSessionId = created.sessionId,
                 connectionProfileId = profileId,
                 title = DEFAULT_TITLE,
                 createdAt = now,
@@ -170,6 +175,7 @@ class AcpRepository(
             )
         )
         _attachedSessions.update { it + id }
+        _sessionControls.update { it + (id to SessionControlState(configOptions = created.configOptions)) }
         return id
     }
 
@@ -182,8 +188,11 @@ class AcpRepository(
 
         loadingRemoteIds.getOrPut(session.connectionProfileId) { mutableSetOf() } += session.remoteSessionId
         try {
-            client.loadSession(session.remoteSessionId, profile.cwd)
+            val configOptions = client.loadSession(session.remoteSessionId, profile.cwd)
             _attachedSessions.update { it + localId }
+            _sessionControls.update { controls ->
+                controls + (localId to (controls[localId] ?: SessionControlState()).copy(configOptions = configOptions))
+            }
         } catch (e: AcpException) {
             insertMessage(localId, MessageRole.SYSTEM, MessageType.ERROR, "Could not resume session: ${e.message}")
         } finally {
@@ -196,6 +205,29 @@ class AcpRepository(
         val profile = connectedProfileOrNull(session.connectionProfileId) ?: return null
         val client = clients[profile.id] ?: return null
         return WorkspaceApi(client, profile.cwd)
+    }
+
+    suspend fun setModel(localSessionId: Long, value: String) {
+        val session = sessionDao.get(localSessionId) ?: return
+        val profile = connectedProfileOrNull(session.connectionProfileId) ?: return
+        val client = clients[session.connectionProfileId] ?: return
+        val controls = _sessionControls.value[localSessionId] ?: return
+        val option = controls.model ?: return
+        setConfigOption(localSessionId, option.id, value)
+    }
+
+    suspend fun setConfigOption(localSessionId: Long, configId: String, value: String) {
+        val session = sessionDao.get(localSessionId) ?: return
+        val profile = connectedProfileOrNull(session.connectionProfileId) ?: return
+        val client = clients[session.connectionProfileId] ?: return
+        try {
+            val configOptions = client.setConfigOption(session.remoteSessionId, configId, value)
+            _sessionControls.update { controls ->
+                controls + (localSessionId to (controls[localSessionId] ?: SessionControlState()).copy(configOptions = configOptions))
+            }
+        } catch (e: AcpException) {
+            insertMessage(localSessionId, MessageRole.SYSTEM, MessageType.ERROR, "Could not change setting: ${e.message}")
+        }
     }
 
     fun sendPrompt(localId: Long, text: String, attachments: List<String> = emptyList()) {
@@ -211,10 +243,27 @@ class AcpRepository(
             }
             _busySessions.update { it + localId }
             try {
-                val stopReason = client.prompt(session.remoteSessionId, text, links)
+                val result = client.prompt(session.remoteSessionId, text, links)
+                Log.d("AcpRepository", "prompt usage=${result.usage}")
+                result.usage?.let { usage ->
+                    updateControls(localId) { state ->
+                        val existing = state.usage
+                        val turnTotal = (existing?.turnTotal ?: 0L) + (usage.turnTotal ?: 0L)
+                        Log.d("AcpRepository", "updating turnTotal=$turnTotal")
+                        state.copy(
+                            usage = UsageInfo(
+                                used = existing?.used ?: 0L,
+                                size = existing?.size ?: 0L,
+                                costAmount = existing?.costAmount,
+                                costCurrency = existing?.costCurrency,
+                                turnTotal = turnTotal,
+                            ),
+                        )
+                    }
+                }
                 val title = sessionDao.get(localId)?.title ?: return@launch
-                if (stopReason != null && stopReason != STOP_END_TURN) {
-                    insertMessage(localId, MessageRole.SYSTEM, MessageType.TEXT, "Stopped: $stopReason")
+                if (result.stopReason != null && result.stopReason != STOP_END_TURN) {
+                    insertMessage(localId, MessageRole.SYSTEM, MessageType.TEXT, "Stopped: ${result.stopReason}")
                 }
                 _completedTurns.tryEmit(CompletedTurn(localId, title, error = null))
             } catch (e: AcpException) {
@@ -294,6 +343,7 @@ class AcpRepository(
         _pendingPermissions.update { list -> list.filterNot { it.localSessionId in affected } }
         loadingRemoteIds[profileId]?.clear()
         _bridgeFeatures.update { it - profileId }
+        _sessionControls.update { controls -> controls - affected }
         updateConnectionState(profileId, ConnectionState.Disconnected)
     }
 
@@ -337,6 +387,22 @@ class AcpRepository(
                     insertMessage(localId, MessageRole.AGENT, MessageType.PLAN, content, rawJson = event.raw.toString())
                 }
             }
+            is AcpEvent.ConfigOptionUpdated -> updateControls(localId) { it.copy(configOptions = event.options) }
+            is AcpEvent.CommandsUpdated -> updateControls(localId) { it.copy(commands = event.commands) }
+            is AcpEvent.UsageUpdated -> updateControls(localId) { state ->
+                Log.d("AcpRepository", "usage_update used=${event.usage.used} size=${event.usage.size}")
+                val existing = state.usage
+                state.copy(
+                    usage = UsageInfo(
+                        used = event.usage.used,
+                        size = event.usage.size,
+                        costAmount = event.usage.costAmount,
+                        costCurrency = event.usage.costCurrency,
+                        turnTotal = existing?.turnTotal,
+                    ),
+                )
+            }
+            is AcpEvent.CurrentModeUpdate -> Unit
             is AcpEvent.Unknown -> insertMessage(localId, MessageRole.SYSTEM, MessageType.TEXT, event.kind, rawJson = event.raw.toString())
             is AcpEvent.PermissionRequest -> {
                 val session = sessionDao.get(localId)
@@ -407,6 +473,12 @@ class AcpRepository(
             rawJson = rawJson,
         )
     )
+
+    private inline fun updateControls(localId: Long, transform: (SessionControlState) -> SessionControlState) {
+        _sessionControls.update { controls ->
+            controls + (localId to transform(controls[localId] ?: SessionControlState()))
+        }
+    }
 
     private suspend fun localSessionId(profileId: Long, remoteId: String): Long? {
         return sessionDao.findByRemoteId(profileId, remoteId)?.id

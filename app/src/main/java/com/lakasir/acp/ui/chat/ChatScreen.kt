@@ -7,8 +7,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -47,6 +50,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
@@ -59,6 +63,7 @@ import androidx.compose.ui.unit.min
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lakasir.acp.acp.AgentInfo
+import com.lakasir.acp.acp.SessionControlState
 import com.lakasir.acp.data.model.DiffState
 import com.lakasir.acp.data.model.PermissionRecord
 import com.lakasir.acp.data.model.PlanItem
@@ -67,10 +72,14 @@ import com.lakasir.acp.data.repository.ConnectionState
 import com.lakasir.acp.ui.chat.components.AgentText
 import com.lakasir.acp.ui.chat.components.AttachmentList
 import com.lakasir.acp.ui.chat.components.ChatInputBar
+import com.lakasir.acp.ui.chat.components.CommandSuggestionMenu
+import com.lakasir.acp.ui.chat.components.ContextUsageIndicator
 import com.lakasir.acp.ui.chat.components.ErrorRow
 import com.lakasir.acp.ui.chat.components.LogRow
+import com.lakasir.acp.ui.chat.components.ModelPickerSheet
 import com.lakasir.acp.ui.chat.components.PermissionRecordRow
 import com.lakasir.acp.ui.chat.components.PlanBlock
+import com.lakasir.acp.ui.chat.components.SessionControlBar
 import com.lakasir.acp.ui.chat.components.SystemNoteRow
 import com.lakasir.acp.ui.chat.components.ThinkingIndicator
 import com.lakasir.acp.ui.chat.components.ThoughtBlock
@@ -98,14 +107,23 @@ fun ChatScreen(
     val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
     val availability by viewModel.availability.collectAsStateWithLifecycle()
+    val controls by viewModel.controls.collectAsStateWithLifecycle()
     val attachments by viewModel.attachments.collectAsStateWithLifecycle()
     var input by rememberSaveable(sessionId) { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    val onPickCommand = remember(input, focusRequester) {
+        { name: String ->
+            input = CommandSuggestions.apply(input, name)
+            focusRequester.requestFocus()
+        }
+    }
 
     ChatContent(
         title = session?.title.orEmpty(),
         profileId = session?.connectionProfileId,
         autoApprove = session?.autoApprove == true,
         items = items.orEmpty(),
+        controls = controls,
         connectionState = connectionState,
         isBusy = isBusy,
         availability = availability,
@@ -119,6 +137,9 @@ fun ChatScreen(
         onRename = viewModel::rename,
         onDelete = { viewModel.delete(onDeleted) },
         onAutoApproveChange = viewModel::setAutoApprove,
+        onPickCommand = onPickCommand,
+        onModelChange = viewModel::setModel,
+        focusRequester = focusRequester,
         onBack = onBack,
         attachments = attachments,
         onRemoveAttachment = viewModel::removeAttachment,
@@ -140,6 +161,7 @@ fun ChatContent(
     profileId: Long?,
     autoApprove: Boolean,
     items: List<ChatItem>,
+    controls: SessionControlState,
     connectionState: ConnectionState,
     isBusy: Boolean,
     availability: InputAvailability,
@@ -150,6 +172,9 @@ fun ChatContent(
     onRename: (String) -> Unit,
     onDelete: () -> Unit,
     onAutoApproveChange: (Boolean) -> Unit,
+    onPickCommand: (String) -> Unit,
+    onModelChange: (String) -> Unit,
+    focusRequester: FocusRequester,
     onBack: (() -> Unit)?,
     attachments: List<String> = emptyList(),
     onRemoveAttachment: (String) -> Unit = {},
@@ -161,9 +186,9 @@ fun ChatContent(
 
     val chat: @Composable () -> Unit = {
         ChatScaffold(
-            title, profileId, autoApprove, items, connectionState, isBusy, availability, input,
-            onInputChange, onSend, onCancel, onRename, onDelete, onAutoApproveChange, onBack,
-            attachments, onRemoveAttachment,
+            title, profileId, autoApprove, items, controls, connectionState, isBusy, availability, input,
+            onInputChange, onSend, onCancel, onRename, onDelete, onAutoApproveChange, onPickCommand, onModelChange,
+            focusRequester, onBack, attachments, onRemoveAttachment,
             onOpenSidebar = sidebar?.let { { scope.launch { drawerState.open() } } },
         )
     }
@@ -202,6 +227,7 @@ private fun ChatScaffold(
     profileId: Long?,
     autoApprove: Boolean,
     items: List<ChatItem>,
+    controls: SessionControlState,
     connectionState: ConnectionState,
     isBusy: Boolean,
     availability: InputAvailability,
@@ -212,6 +238,9 @@ private fun ChatScaffold(
     onRename: (String) -> Unit,
     onDelete: () -> Unit,
     onAutoApproveChange: (Boolean) -> Unit,
+    onPickCommand: (String) -> Unit,
+    onModelChange: (String) -> Unit,
+    focusRequester: FocusRequester,
     onBack: (() -> Unit)?,
     attachments: List<String>,
     onRemoveAttachment: (String) -> Unit,
@@ -221,6 +250,7 @@ private fun ChatScaffold(
     var showRename by rememberSaveable { mutableStateOf(false) }
     var showDelete by rememberSaveable { mutableStateOf(false) }
     var showAutoConfirm by rememberSaveable { mutableStateOf(false) }
+    var showModelSheet by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val atBottom by remember {
@@ -228,6 +258,8 @@ private fun ChatScaffold(
     }
     val reversed = remember(items) { items.asReversed() }
     val lastAgentTextId = remember(items) { items.lastOrNull()?.takeIf { it is ChatItem.AgentText }?.id }
+    val suggestions = remember(input, controls.commands) { CommandSuggestions.filter(input, controls.commands) }
+    val commandHint = remember(input, controls.commands) { CommandSuggestions.hint(input, controls.commands) }
 
     Scaffold(
         topBar = {
@@ -278,17 +310,41 @@ private fun ChatScaffold(
             )
         },
         bottomBar = {
-            ChatInputBar(
-                text = input,
-                onTextChange = onInputChange,
-                enabled = availability == InputAvailability.Ready,
-                isBusy = isBusy,
-                hint = availability.hint(),
-                onSend = onSend,
-                onCancel = onCancel,
-                attachments = attachments,
-                onRemoveAttachment = onRemoveAttachment,
-            )
+            Column {
+                CommandSuggestionMenu(commands = suggestions, onPick = onPickCommand)
+                SessionControlBar(
+                    controls = controls,
+                    isBusy = isBusy,
+                    onOpenModelPicker = { showModelSheet = true },
+                )
+                controls.usage?.let { usage ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Context",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        ContextUsageIndicator(usage = usage)
+                    }
+                }
+                ChatInputBar(
+                    text = input,
+                    onTextChange = onInputChange,
+                    enabled = availability == InputAvailability.Ready,
+                    isBusy = isBusy,
+                    hint = availability.hint(),
+                    onSend = onSend,
+                    onCancel = onCancel,
+                    attachments = attachments,
+                    onRemoveAttachment = onRemoveAttachment,
+                    commandHint = commandHint,
+                    focusRequester = focusRequester,
+                )
+            }
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
@@ -356,6 +412,20 @@ private fun ChatScaffold(
             onDismiss = { showDelete = false },
         )
     }
+
+    if (showModelSheet) {
+        controls.model?.let { model ->
+            ModelPickerSheet(
+                option = model,
+                busy = isBusy,
+                onSelect = {
+                    showModelSheet = false
+                    onModelChange(it)
+                },
+                onDismiss = { showModelSheet = false },
+            )
+        }
+    }
 }
 
 @Composable
@@ -417,10 +487,11 @@ private val previewItems = listOf(
 private fun ChatDarkPreview() {
     AcpTheme(darkTheme = true) {
         ChatContent(
-            "Fix flaky login test", 1, true, previewItems,
+            "Fix flaky login test", 1, true, previewItems, SessionControlState(),
             ConnectionState.Connected(1, AgentInfo(1, "agent", "1.0", true)),
             isBusy = true, availability = InputAvailability.Ready, input = "",
-            onInputChange = {}, onSend = {}, onCancel = {}, onRename = {}, onDelete = {}, onAutoApproveChange = {}, onBack = {},
+            onInputChange = {}, onSend = {}, onCancel = {}, onRename = {}, onDelete = {}, onAutoApproveChange = {},
+            onPickCommand = {}, onModelChange = {}, focusRequester = FocusRequester(), onBack = {},
         )
     }
 }
@@ -430,9 +501,11 @@ private fun ChatDarkPreview() {
 private fun ChatLightPreview() {
     AcpTheme(darkTheme = false) {
         ChatContent(
-            "Fix flaky login test", 1, false, previewItems, ConnectionState.Disconnected,
+            "Fix flaky login test", 1, false, previewItems, SessionControlState(),
+            ConnectionState.Disconnected,
             isBusy = false, availability = InputAvailability.Offline, input = "",
-            onInputChange = {}, onSend = {}, onCancel = {}, onRename = {}, onDelete = {}, onAutoApproveChange = {}, onBack = {},
+            onInputChange = {}, onSend = {}, onCancel = {}, onRename = {}, onDelete = {}, onAutoApproveChange = {},
+            onPickCommand = {}, onModelChange = {}, focusRequester = FocusRequester(), onBack = {},
         )
     }
 }

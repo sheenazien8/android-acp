@@ -38,6 +38,10 @@ sealed interface AcpEvent {
     data class ToolCallStarted(override val sessionId: String, val toolCall: ToolCallInfo, override val raw: JsonElement) : AcpEvent
     data class ToolCallUpdated(override val sessionId: String, val toolCall: ToolCallInfo, override val raw: JsonElement) : AcpEvent
     data class Plan(override val sessionId: String, val entries: List<PlanEntry>, override val raw: JsonElement) : AcpEvent
+    data class ConfigOptionUpdated(override val sessionId: String, val options: List<ConfigOption>, override val raw: JsonElement) : AcpEvent
+    data class CommandsUpdated(override val sessionId: String, val commands: List<AgentCommand>, override val raw: JsonElement) : AcpEvent
+    data class UsageUpdated(override val sessionId: String, val usage: UsageInfo, override val raw: JsonElement) : AcpEvent
+    data class CurrentModeUpdate(override val sessionId: String, val modeId: String, override val raw: JsonElement) : AcpEvent
     data class Unknown(override val sessionId: String, val kind: String, override val raw: JsonElement) : AcpEvent
 
     data class PermissionRequest(
@@ -64,6 +68,14 @@ object AcpEventParser {
             SessionUpdateKind.TOOL_CALL -> AcpEvent.ToolCallStarted(sessionId, toolCall(update), root)
             SessionUpdateKind.TOOL_CALL_UPDATE -> AcpEvent.ToolCallUpdated(sessionId, toolCall(update), root)
             SessionUpdateKind.PLAN -> AcpEvent.Plan(sessionId, planEntries(update["entries"]), root)
+            SessionUpdateKind.CONFIG_OPTION_UPDATE -> AcpEvent.ConfigOptionUpdated(sessionId, SessionConfigParser.parseConfigOptions(update["configOptions"]), root)
+            SessionUpdateKind.AVAILABLE_COMMANDS_UPDATE -> AcpEvent.CommandsUpdated(sessionId, SessionConfigParser.parseAvailableCommands(update), root)
+            SessionUpdateKind.USAGE_UPDATE -> SessionConfigParser.parseUsageUpdate(update)?.let {
+                AcpEvent.UsageUpdated(sessionId, it, root)
+            } ?: AcpEvent.Unknown(sessionId, kind, root)
+            SessionUpdateKind.CURRENT_MODE_UPDATE -> SessionConfigParser.parseCurrentModeId(update)?.let {
+                AcpEvent.CurrentModeUpdate(sessionId, it, root)
+            } ?: AcpEvent.Unknown(sessionId, kind, root)
             else -> AcpEvent.Unknown(sessionId, kind, root)
         }
     }

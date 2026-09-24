@@ -1,5 +1,6 @@
 package com.lakasir.acp.acp
 
+import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -16,6 +17,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -23,11 +25,19 @@ import kotlinx.serialization.json.putJsonObject
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
+private const val TAG = "AcpClient"
+
+
 data class AgentInfo(
     val protocolVersion: Int?,
     val name: String?,
     val version: String?,
     val loadSession: Boolean,
+)
+
+data class SessionCreated(
+    val sessionId: String,
+    val configOptions: List<ConfigOption> = emptyList(),
 )
 
 data class ResourceLink(val uri: String, val name: String) {
@@ -47,6 +57,8 @@ data class ResourceLink(val uri: String, val name: String) {
         }
     }
 }
+
+data class PromptResult(val stopReason: String?, val usage: UsageInfo? = null)
 
 class AcpClient(
     private val transport: AcpTransport,
@@ -102,6 +114,9 @@ class AcpClient(
                     put("writeTextFile", false)
                 }
                 put("terminal", false)
+                putJsonObject("session") {
+                    putJsonObject("configOptions") {}
+                }
             }
             putJsonObject("clientInfo") {
                 put("name", clientName)
@@ -120,26 +135,44 @@ class AcpClient(
         ).also { agentInfo = it }
     }
 
-    suspend fun newSession(cwd: String): String {
+    suspend fun newSession(cwd: String): SessionCreated {
         val params = buildJsonObject {
             put("cwd", cwd)
             putJsonArray("mcpServers") {}
         }
         val result = request(AcpMethods.SESSION_NEW, params) as? JsonObject
-        return (result?.get("sessionId") as? JsonPrimitive)?.contentOrNull
+            ?: throw AcpException.InvalidResponse("session/new result is not an object")
+        val sessionId = (result["sessionId"] as? JsonPrimitive)?.contentOrNull
             ?: throw AcpException.InvalidResponse("session/new returned no sessionId")
+        return SessionCreated(
+            sessionId = sessionId,
+            configOptions = SessionConfigParser.parseConfigOptions(result["configOptions"]),
+        )
     }
 
-    suspend fun loadSession(sessionId: String, cwd: String) {
+    suspend fun loadSession(sessionId: String, cwd: String): List<ConfigOption> {
         val params = buildJsonObject {
             put("sessionId", sessionId)
             put("cwd", cwd)
             putJsonArray("mcpServers") {}
         }
-        request(AcpMethods.SESSION_LOAD, params, LOAD_TIMEOUT_MS)
+        val result = request(AcpMethods.SESSION_LOAD, params, LOAD_TIMEOUT_MS) as? JsonObject
+            ?: throw AcpException.InvalidResponse("session/load result is not an object")
+        return SessionConfigParser.parseConfigOptions(result["configOptions"])
     }
 
-    suspend fun prompt(sessionId: String, text: String, links: List<ResourceLink> = emptyList()): String? {
+    suspend fun setConfigOption(sessionId: String, configId: String, value: String): List<ConfigOption> {
+        val params = buildJsonObject {
+            put("sessionId", sessionId)
+            put("configId", configId)
+            put("value", value)
+        }
+        val result = request(AcpMethods.SESSION_SET_CONFIG_OPTION, params) as? JsonObject
+            ?: throw AcpException.InvalidResponse("session/set_config_option result is not an object")
+        return SessionConfigParser.parseConfigOptions(result["configOptions"])
+    }
+
+    suspend fun prompt(sessionId: String, text: String, links: List<ResourceLink> = emptyList()): PromptResult {
         val params = buildJsonObject {
             put("sessionId", sessionId)
             put("prompt", buildJsonArray {
@@ -159,7 +192,18 @@ class AcpClient(
             })
         }
         val result = request(AcpMethods.SESSION_PROMPT, params, timeoutMs = null) as? JsonObject
-        return (result?.get("stopReason") as? JsonPrimitive)?.contentOrNull
+        val usage = result?.get("usage")?.let { parsePromptUsage(it) }
+        Log.d(TAG, "prompt result stopReason=${result?.get("stopReason")} usage=${usage}")
+        return PromptResult(
+            stopReason = (result?.get("stopReason") as? JsonPrimitive)?.contentOrNull,
+            usage = usage,
+        )
+    }
+
+    private fun parsePromptUsage(element: JsonElement): UsageInfo? {
+        val obj = element as? JsonObject ?: return null
+        val total = (obj["totalTokens"] as? JsonPrimitive)?.longOrNull ?: return null
+        return UsageInfo(used = 0L, size = 0L, turnTotal = total)
     }
 
     fun cancel(sessionId: String): Boolean =
@@ -219,10 +263,18 @@ class AcpClient(
     }
 
     private suspend fun handleNotification(message: AcpMessage.Notification) {
-        if (message.method != AcpMethods.SESSION_UPDATE) return
+        if (message.method != AcpMethods.SESSION_UPDATE) {
+            Log.d(TAG, "notification: method=${message.method}")
+            return
+        }
+        val params = message.params as? JsonObject
+        val kind = (params?.get("update") as? JsonObject)
+            ?.get("sessionUpdate")?.jsonPrimitive?.contentOrNull ?: "?"
+        Log.d(TAG, "session/update: kind=$kind params=${message.params}")
         try {
             _events.emit(AcpEventParser.parseSessionUpdate(message.params))
         } catch (e: AcpParseException) {
+            Log.w(TAG, "failed to parse session/update: ${e.message}")
             _protocolErrors.emit(e.message ?: "Invalid session/update")
         }
     }

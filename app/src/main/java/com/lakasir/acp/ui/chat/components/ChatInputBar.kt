@@ -20,8 +20,11 @@ import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 
@@ -37,8 +40,11 @@ fun ChatInputBar(
     modifier: Modifier = Modifier,
     attachments: List<String> = emptyList(),
     onRemoveAttachment: (String) -> Unit = {},
+    commandHint: String? = null,
+    focusRequester: FocusRequester? = null,
 ) {
     Column(modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
+        val fieldFocusRequester = focusRequester ?: remember { FocusRequester() }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         if (hint != null) {
             Text(
@@ -59,9 +65,10 @@ fun ChatInputBar(
             OutlinedTextField(
                 value = text,
                 onValueChange = onTextChange,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).focusRequester(fieldFocusRequester),
                 enabled = enabled,
                 placeholder = { Text("Message the agent") },
+                supportingText = commandHint?.let { { Text(it) } },
                 maxLines = 6,
                 shape = MaterialTheme.shapes.small,
                 textStyle = MaterialTheme.typography.bodyMedium,

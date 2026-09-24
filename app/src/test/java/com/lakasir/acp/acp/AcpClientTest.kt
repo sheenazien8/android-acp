@@ -14,6 +14,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -36,6 +37,8 @@ class AcpClientTest {
         assertEquals("initialize", sent["method"]!!.jsonPrimitive.content)
         val fs = sent["params"]!!.jsonObject["clientCapabilities"]!!.jsonObject["fs"]!!.jsonObject
         assertEquals("false", fs["readTextFile"]!!.jsonPrimitive.content)
+        val configOptions = sent["params"]!!.jsonObject["clientCapabilities"]!!.jsonObject["session"]!!.jsonObject["configOptions"]!!.jsonObject
+        assertTrue(configOptions.isEmpty())
 
         transport.receive(
             """{"jsonrpc":"2.0","id":${lastId()},"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true},"agentInfo":{"name":"agent","version":"1.0"}}}"""
@@ -57,8 +60,8 @@ class AcpClientTest {
         transport.receive("""{"jsonrpc":"2.0","id":$secondId,"result":{"sessionId":"two"}}""")
         transport.receive("""{"jsonrpc":"2.0","id":$firstId,"result":{"sessionId":"one"}}""")
 
-        assertEquals("one", first.await())
-        assertEquals("two", second.await())
+        assertEquals("one", first.await().sessionId)
+        assertEquals("two", second.await().sessionId)
     }
 
     @Test
@@ -88,7 +91,20 @@ class AcpClientTest {
         advanceTimeBy(60_000)
         assertFalse(result.isCompleted)
         transport.receive("""{"jsonrpc":"2.0","id":$id,"result":{"stopReason":"end_turn"}}""")
-        assertEquals("end_turn", result.await())
+        val got = result.await()
+        assertEquals("end_turn", got.stopReason)
+        assertNull(got.usage)
+    }
+
+    @Test
+    fun `prompt parses usage from response`() = runTest(UnconfinedTestDispatcher()) {
+        val client = client()
+        val result = async { client.prompt("s1", "hi") }
+        val id = lastId()
+        transport.receive("""{"jsonrpc":"2.0","id":$id,"result":{"stopReason":"end_turn","usage":{"totalTokens":1200,"inputTokens":400,"outputTokens":800}}}""")
+        val got = result.await()
+        assertEquals("end_turn", got.stopReason)
+        assertEquals(1200L, got.usage?.turnTotal)
     }
 
     @Test
