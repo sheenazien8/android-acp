@@ -76,4 +76,19 @@ Relevant files:
 - `pi-acp` local source inspection.
 
 ## Implementation
-<!-- Write you've done in here -->
+- Committed full Plan 18 state to `feat/agent-context` branch (model switch + usage row + slash commands).
+- On `master`, reverted usage-row-specific code:
+  - `AcpClient.prompt()` returns `String?` again; removed `PromptResult`, `parsePromptUsage`, and debug logs.
+  - `AcpSession.prompt()` returns `String?` again.
+  - `AcpRepository` no longer accumulates usage; `UsageUpdated` is handled as a no-op to avoid visible system notes.
+  - Removed `ContextUsageIndicator.kt`, `TokenFormat.kt`, and `TokenFormatTest.kt`.
+  - Reverted `isReturnDefaultValues` Gradle setting.
+  - Reverted local `pi-acp` runtime patch.
+- Committed cleaned `master` state: model switch + slash commands.
+- Added thinking level switch:
+  - Added `SessionConfigIds.THOUGHT_LEVEL` and `SessionControlState.thinking` property.
+  - Extended `SessionControlBar` to render a second chip for the thinking-level config option.
+  - Extended `ChatScreen` to host a second `ModelPickerSheet` for thinking level and wired `viewModel.setThinkingLevel`.
+  - `ChatViewModel.setThinkingLevel` calls `repository.setConfigOption(..., SessionConfigIds.THOUGHT_LEVEL, value)`.
+- Verified `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug` passes.
+- Installed debug APK; device was offline during manual smoke test (network/indicator issue), so UI was verified through build + unit tests only.
