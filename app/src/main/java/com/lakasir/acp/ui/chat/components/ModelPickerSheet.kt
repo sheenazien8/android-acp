@@ -86,7 +86,7 @@ fun ModelPickerSheet(
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 enabled = !busy,
-                placeholder = { Text("Search models") },
+                placeholder = { Text("Search ${option.name.lowercase()}") },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                 trailingIcon = if (query.isNotEmpty()) {
                     {
