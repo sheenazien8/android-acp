@@ -48,6 +48,10 @@ data class SessionControlState(
     val model: ConfigOption?
         get() = configOptions.firstOrNull { it.category == SessionConfigCategory.MODEL }
             ?: configOptions.firstOrNull { it.id == SessionConfigIds.MODEL }
+
+    val thinking: ConfigOption?
+        get() = configOptions.firstOrNull { it.category == SessionConfigCategory.THOUGHT_LEVEL }
+            ?: configOptions.firstOrNull { it.id == SessionConfigIds.THOUGHT_LEVEL }
 }
 
 object SessionConfigParser {

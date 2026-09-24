@@ -23,26 +23,30 @@ fun SessionControlBar(
     controls: SessionControlState,
     isBusy: Boolean,
     onOpenModelPicker: () -> Unit,
+    onOpenThinkingPicker: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val model = controls.model ?: return
+    val model = controls.model
+    val thinking = controls.thinking
+    if (model == null && thinking == null) return
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ModelChip(model = model, enabled = !isBusy, onClick = onOpenModelPicker)
+        model?.let { ConfigChip(option = it, enabled = !isBusy, onClick = onOpenModelPicker) }
+        thinking?.let { ConfigChip(option = it, enabled = !isBusy, onClick = onOpenThinkingPicker) }
     }
 }
 
 @Composable
-private fun ModelChip(
-    model: ConfigOption,
+private fun ConfigChip(
+    option: ConfigOption,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val currentName = model.choices.firstOrNull { it.value == model.currentValue }?.name ?: model.name
+    val currentName = option.choices.firstOrNull { it.value == option.currentValue }?.name ?: option.name
     AssistChip(
         onClick = onClick,
         label = { Text(currentName, maxLines = 1, style = MaterialTheme.typography.labelLarge) },

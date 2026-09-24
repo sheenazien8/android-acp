@@ -9,7 +9,7 @@ class AcpSession(
 ) {
     val events: Flow<AcpEvent> = client.events.filter { it.sessionId == sessionId }
 
-    suspend fun prompt(text: String): PromptResult = client.prompt(sessionId, text)
+    suspend fun prompt(text: String): String? = client.prompt(sessionId, text)
 
     fun cancel(): Boolean = client.cancel(sessionId)
 }

@@ -33,6 +33,7 @@ object SessionConfigType {
 
 object SessionConfigIds {
     const val MODEL = "model"
+    const val THOUGHT_LEVEL = "thought_level"
 }
 
 object SessionUpdateKind {

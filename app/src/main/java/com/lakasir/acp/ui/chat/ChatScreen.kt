@@ -73,7 +73,6 @@ import com.lakasir.acp.ui.chat.components.AgentText
 import com.lakasir.acp.ui.chat.components.AttachmentList
 import com.lakasir.acp.ui.chat.components.ChatInputBar
 import com.lakasir.acp.ui.chat.components.CommandSuggestionMenu
-import com.lakasir.acp.ui.chat.components.ContextUsageIndicator
 import com.lakasir.acp.ui.chat.components.ErrorRow
 import com.lakasir.acp.ui.chat.components.LogRow
 import com.lakasir.acp.ui.chat.components.ModelPickerSheet
@@ -139,6 +138,7 @@ fun ChatScreen(
         onAutoApproveChange = viewModel::setAutoApprove,
         onPickCommand = onPickCommand,
         onModelChange = viewModel::setModel,
+        onThinkingChange = viewModel::setThinkingLevel,
         focusRequester = focusRequester,
         onBack = onBack,
         attachments = attachments,
@@ -174,6 +174,7 @@ fun ChatContent(
     onAutoApproveChange: (Boolean) -> Unit,
     onPickCommand: (String) -> Unit,
     onModelChange: (String) -> Unit,
+    onThinkingChange: (String) -> Unit,
     focusRequester: FocusRequester,
     onBack: (() -> Unit)?,
     attachments: List<String> = emptyList(),
@@ -187,7 +188,7 @@ fun ChatContent(
     val chat: @Composable () -> Unit = {
         ChatScaffold(
             title, profileId, autoApprove, items, controls, connectionState, isBusy, availability, input,
-            onInputChange, onSend, onCancel, onRename, onDelete, onAutoApproveChange, onPickCommand, onModelChange,
+            onInputChange, onSend, onCancel, onRename, onDelete, onAutoApproveChange, onPickCommand, onModelChange, onThinkingChange,
             focusRequester, onBack, attachments, onRemoveAttachment,
             onOpenSidebar = sidebar?.let { { scope.launch { drawerState.open() } } },
         )
@@ -240,6 +241,7 @@ private fun ChatScaffold(
     onAutoApproveChange: (Boolean) -> Unit,
     onPickCommand: (String) -> Unit,
     onModelChange: (String) -> Unit,
+    onThinkingChange: (String) -> Unit,
     focusRequester: FocusRequester,
     onBack: (() -> Unit)?,
     attachments: List<String>,
@@ -251,6 +253,7 @@ private fun ChatScaffold(
     var showDelete by rememberSaveable { mutableStateOf(false) }
     var showAutoConfirm by rememberSaveable { mutableStateOf(false) }
     var showModelSheet by rememberSaveable { mutableStateOf(false) }
+    var showThinkingSheet by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val atBottom by remember {
@@ -316,21 +319,8 @@ private fun ChatScaffold(
                     controls = controls,
                     isBusy = isBusy,
                     onOpenModelPicker = { showModelSheet = true },
+                    onOpenThinkingPicker = { showThinkingSheet = true },
                 )
-                controls.usage?.let { usage ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "Context",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.weight(1f))
-                        ContextUsageIndicator(usage = usage)
-                    }
-                }
                 ChatInputBar(
                     text = input,
                     onTextChange = onInputChange,
@@ -426,6 +416,20 @@ private fun ChatScaffold(
             )
         }
     }
+
+    if (showThinkingSheet) {
+        controls.thinking?.let { option ->
+            ModelPickerSheet(
+                option = option,
+                busy = isBusy,
+                onSelect = {
+                    showThinkingSheet = false
+                    onThinkingChange(it)
+                },
+                onDismiss = { showThinkingSheet = false },
+            )
+        }
+    }
 }
 
 @Composable
@@ -491,7 +495,7 @@ private fun ChatDarkPreview() {
             ConnectionState.Connected(1, AgentInfo(1, "agent", "1.0", true)),
             isBusy = true, availability = InputAvailability.Ready, input = "",
             onInputChange = {}, onSend = {}, onCancel = {}, onRename = {}, onDelete = {}, onAutoApproveChange = {},
-            onPickCommand = {}, onModelChange = {}, focusRequester = FocusRequester(), onBack = {},
+            onPickCommand = {}, onModelChange = {}, onThinkingChange = {}, focusRequester = FocusRequester(), onBack = {},
         )
     }
 }
@@ -505,7 +509,7 @@ private fun ChatLightPreview() {
             ConnectionState.Disconnected,
             isBusy = false, availability = InputAvailability.Offline, input = "",
             onInputChange = {}, onSend = {}, onCancel = {}, onRename = {}, onDelete = {}, onAutoApproveChange = {},
-            onPickCommand = {}, onModelChange = {}, focusRequester = FocusRequester(), onBack = {},
+            onPickCommand = {}, onModelChange = {}, onThinkingChange = {}, focusRequester = FocusRequester(), onBack = {},
         )
     }
 }

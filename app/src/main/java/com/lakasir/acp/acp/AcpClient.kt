@@ -1,6 +1,5 @@
 package com.lakasir.acp.acp
 
-import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -17,15 +16,12 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
-
-private const val TAG = "AcpClient"
 
 
 data class AgentInfo(
@@ -57,8 +53,6 @@ data class ResourceLink(val uri: String, val name: String) {
         }
     }
 }
-
-data class PromptResult(val stopReason: String?, val usage: UsageInfo? = null)
 
 class AcpClient(
     private val transport: AcpTransport,
@@ -172,7 +166,7 @@ class AcpClient(
         return SessionConfigParser.parseConfigOptions(result["configOptions"])
     }
 
-    suspend fun prompt(sessionId: String, text: String, links: List<ResourceLink> = emptyList()): PromptResult {
+    suspend fun prompt(sessionId: String, text: String, links: List<ResourceLink> = emptyList()): String? {
         val params = buildJsonObject {
             put("sessionId", sessionId)
             put("prompt", buildJsonArray {
@@ -192,18 +186,7 @@ class AcpClient(
             })
         }
         val result = request(AcpMethods.SESSION_PROMPT, params, timeoutMs = null) as? JsonObject
-        val usage = result?.get("usage")?.let { parsePromptUsage(it) }
-        Log.d(TAG, "prompt result stopReason=${result?.get("stopReason")} usage=${usage}")
-        return PromptResult(
-            stopReason = (result?.get("stopReason") as? JsonPrimitive)?.contentOrNull,
-            usage = usage,
-        )
-    }
-
-    private fun parsePromptUsage(element: JsonElement): UsageInfo? {
-        val obj = element as? JsonObject ?: return null
-        val total = (obj["totalTokens"] as? JsonPrimitive)?.longOrNull ?: return null
-        return UsageInfo(used = 0L, size = 0L, turnTotal = total)
+        return (result?.get("stopReason") as? JsonPrimitive)?.contentOrNull
     }
 
     fun cancel(sessionId: String): Boolean =
@@ -263,18 +246,10 @@ class AcpClient(
     }
 
     private suspend fun handleNotification(message: AcpMessage.Notification) {
-        if (message.method != AcpMethods.SESSION_UPDATE) {
-            Log.d(TAG, "notification: method=${message.method}")
-            return
-        }
-        val params = message.params as? JsonObject
-        val kind = (params?.get("update") as? JsonObject)
-            ?.get("sessionUpdate")?.jsonPrimitive?.contentOrNull ?: "?"
-        Log.d(TAG, "session/update: kind=$kind params=${message.params}")
+        if (message.method != AcpMethods.SESSION_UPDATE) return
         try {
             _events.emit(AcpEventParser.parseSessionUpdate(message.params))
         } catch (e: AcpParseException) {
-            Log.w(TAG, "failed to parse session/update: ${e.message}")
             _protocolErrors.emit(e.message ?: "Invalid session/update")
         }
     }

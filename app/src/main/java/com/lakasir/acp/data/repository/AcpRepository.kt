@@ -11,7 +11,6 @@ import com.lakasir.acp.acp.PermissionOption
 import com.lakasir.acp.acp.PermissionOptionKind
 import com.lakasir.acp.acp.ResourceLink
 import com.lakasir.acp.acp.SessionControlState
-import com.lakasir.acp.acp.UsageInfo
 import com.lakasir.acp.acp.ToolCallStatus
 import com.lakasir.acp.acp.TransportState
 import com.lakasir.acp.acp.WorkspaceApi
@@ -243,27 +242,10 @@ class AcpRepository(
             }
             _busySessions.update { it + localId }
             try {
-                val result = client.prompt(session.remoteSessionId, text, links)
-                Log.d("AcpRepository", "prompt usage=${result.usage}")
-                result.usage?.let { usage ->
-                    updateControls(localId) { state ->
-                        val existing = state.usage
-                        val turnTotal = (existing?.turnTotal ?: 0L) + (usage.turnTotal ?: 0L)
-                        Log.d("AcpRepository", "updating turnTotal=$turnTotal")
-                        state.copy(
-                            usage = UsageInfo(
-                                used = existing?.used ?: 0L,
-                                size = existing?.size ?: 0L,
-                                costAmount = existing?.costAmount,
-                                costCurrency = existing?.costCurrency,
-                                turnTotal = turnTotal,
-                            ),
-                        )
-                    }
-                }
+                val stopReason = client.prompt(session.remoteSessionId, text, links)
                 val title = sessionDao.get(localId)?.title ?: return@launch
-                if (result.stopReason != null && result.stopReason != STOP_END_TURN) {
-                    insertMessage(localId, MessageRole.SYSTEM, MessageType.TEXT, "Stopped: ${result.stopReason}")
+                if (stopReason != null && stopReason != STOP_END_TURN) {
+                    insertMessage(localId, MessageRole.SYSTEM, MessageType.TEXT, "Stopped: $stopReason")
                 }
                 _completedTurns.tryEmit(CompletedTurn(localId, title, error = null))
             } catch (e: AcpException) {
@@ -389,19 +371,7 @@ class AcpRepository(
             }
             is AcpEvent.ConfigOptionUpdated -> updateControls(localId) { it.copy(configOptions = event.options) }
             is AcpEvent.CommandsUpdated -> updateControls(localId) { it.copy(commands = event.commands) }
-            is AcpEvent.UsageUpdated -> updateControls(localId) { state ->
-                Log.d("AcpRepository", "usage_update used=${event.usage.used} size=${event.usage.size}")
-                val existing = state.usage
-                state.copy(
-                    usage = UsageInfo(
-                        used = event.usage.used,
-                        size = event.usage.size,
-                        costAmount = event.usage.costAmount,
-                        costCurrency = event.usage.costCurrency,
-                        turnTotal = existing?.turnTotal,
-                    ),
-                )
-            }
+            is AcpEvent.UsageUpdated -> Unit
             is AcpEvent.CurrentModeUpdate -> Unit
             is AcpEvent.Unknown -> insertMessage(localId, MessageRole.SYSTEM, MessageType.TEXT, event.kind, rawJson = event.raw.toString())
             is AcpEvent.PermissionRequest -> {

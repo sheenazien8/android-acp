@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.lakasir.acp.acp.SessionConfigIds
 import com.lakasir.acp.acp.SessionControlState
 
 sealed interface InputAvailability {
@@ -110,6 +111,10 @@ class ChatViewModel(
 
     fun cancel() {
         viewModelScope.launch { repository.cancel(sessionId) }
+    }
+
+    fun setThinkingLevel(value: String) {
+        viewModelScope.launch { repository.setConfigOption(sessionId, SessionConfigIds.THOUGHT_LEVEL, value) }
     }
 
     fun setModel(value: String) {

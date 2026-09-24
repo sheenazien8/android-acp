@@ -92,19 +92,7 @@ class AcpClientTest {
         assertFalse(result.isCompleted)
         transport.receive("""{"jsonrpc":"2.0","id":$id,"result":{"stopReason":"end_turn"}}""")
         val got = result.await()
-        assertEquals("end_turn", got.stopReason)
-        assertNull(got.usage)
-    }
-
-    @Test
-    fun `prompt parses usage from response`() = runTest(UnconfinedTestDispatcher()) {
-        val client = client()
-        val result = async { client.prompt("s1", "hi") }
-        val id = lastId()
-        transport.receive("""{"jsonrpc":"2.0","id":$id,"result":{"stopReason":"end_turn","usage":{"totalTokens":1200,"inputTokens":400,"outputTokens":800}}}""")
-        val got = result.await()
-        assertEquals("end_turn", got.stopReason)
-        assertEquals(1200L, got.usage?.turnTotal)
+        assertEquals("end_turn", got)
     }
 
     @Test
