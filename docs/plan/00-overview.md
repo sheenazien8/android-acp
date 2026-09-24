@@ -68,5 +68,6 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - Room database is at version 2 (plan 13 adds `sessions.autoApprove` via `MIGRATION_1_2`)
 - 68 JVM unit tests after plan 13, all passing; `lintDebug` passes
 - Plan 14 implemented (workspace sidebar, file viewer/editor with markdown preview, attach to prompt) with a new Node bridge in `bridge/` that replaces websocat; 98 JVM unit tests + 18 bridge tests passing
+- Plan 15 implemented (Git tab: status, diffs, stage/unstage, commit, history); 108 JVM unit tests + 28 bridge tests passing
 - Debug APK installed over adb on a Pixel 7a (Android 15); the app launches and the Connections screen renders
 - Not yet verified: end-to-end against a real ACP bridge (connect → initialize → new session → prompt streaming → tool calls → permission → cancel)

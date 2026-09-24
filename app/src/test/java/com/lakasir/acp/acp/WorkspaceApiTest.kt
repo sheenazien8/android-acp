@@ -133,6 +133,58 @@ class WorkspaceApiTest {
     }
 
     @Test
+    fun `git status decodes branch and file changes`() = runTest(UnconfinedTestDispatcher()) {
+        val api = WorkspaceApi(client(), "/p")
+        val result = async { api.gitStatus() }
+        assertEquals(LakasirMethods.GIT_STATUS, transport.lastSent()["method"]!!.jsonPrimitive.content)
+        transport.receive(
+            """{"jsonrpc":"2.0","id":${lastId()},"result":{"isRepo":true,"branch":"main","detached":false,"oid":"abc1234",
+                "upstream":null,"ahead":1,"behind":0,"truncated":false,"files":[
+                {"path":"a.kt","origPath":null,"index":"M","worktree":null,"conflicted":false,"untracked":false},
+                {"path":"new/","origPath":null,"index":null,"worktree":null,"conflicted":false,"untracked":true}
+            ]}}"""
+        )
+        val status = result.await()
+        assertEquals("main", status.branch)
+        assertEquals(1, status.ahead)
+        assertTrue(status.files[0].isStaged)
+        assertTrue(status.files[1].untracked)
+        assertTrue(status.files[1].isDirectory)
+    }
+
+    @Test
+    fun `git not a repository decodes with defaults`() = runTest(UnconfinedTestDispatcher()) {
+        val api = WorkspaceApi(client(), "/p")
+        val result = async { api.gitStatus() }
+        transport.receive("""{"jsonrpc":"2.0","id":${lastId()},"result":{"isRepo":false,"files":[]}}""")
+        assertFalse(result.await().isRepo)
+    }
+
+    @Test
+    fun `git stage sends paths and diff sends origPath`() = runTest(UnconfinedTestDispatcher()) {
+        val api = WorkspaceApi(client(), "/p")
+        val stage = async { api.gitStage(listOf("a.kt", "b.kt")) }
+        assertEquals(listOf("a.kt", "b.kt"), params()["paths"]!!.jsonArray.map { it.jsonPrimitive.content })
+        transport.receive("""{"jsonrpc":"2.0","id":${lastId()},"result":{}}""")
+        stage.await()
+
+        val diff = async { api.gitDiff("new.md", staged = true, origPath = "old.md") }
+        assertEquals("old.md", params()["origPath"]!!.jsonPrimitive.content)
+        assertEquals("true", params()["staged"]!!.jsonPrimitive.content)
+        transport.receive("""{"jsonrpc":"2.0","id":${lastId()},"result":{"path":"new.md","oldText":null,"newText":"x"}}""")
+        assertNull(diff.await().oldText)
+    }
+
+    @Test
+    fun `git commit decodes the new hash`() = runTest(UnconfinedTestDispatcher()) {
+        val api = WorkspaceApi(client(), "/p")
+        val result = async { api.gitCommit("Fix it") }
+        assertEquals("Fix it", params()["message"]!!.jsonPrimitive.content)
+        transport.receive("""{"jsonrpc":"2.0","id":${lastId()},"result":{"hash":"abcdef1234","shortHash":"abcdef1"}}""")
+        assertEquals("abcdef1", result.await().shortHash)
+    }
+
+    @Test
     fun `resource link uri is absolute and percent-encoded`() {
         assertEquals(
             "file:///home/me/my%20project/src/caf%C3%A9%23.kt",

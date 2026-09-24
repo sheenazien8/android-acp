@@ -14,6 +14,8 @@ import com.lakasir.acp.ui.connection.ConnectionScreen
 import com.lakasir.acp.ui.permission.PermissionHost
 import com.lakasir.acp.ui.sessions.SessionsScreen
 import com.lakasir.acp.ui.workspace.FileViewerScreen
+import com.lakasir.acp.ui.workspace.git.GitCommitScreen
+import com.lakasir.acp.ui.workspace.git.GitDiffScreen
 
 @Composable
 fun AppNavHost(widthSizeClass: WindowWidthSizeClass) {
@@ -38,6 +40,10 @@ fun AppNavHost(widthSizeClass: WindowWidthSizeClass) {
                                 onBack = null,
                                 onDeleted = {},
                                 onOpenFile = { navController.navigate(FileViewer(sessionId, it)) },
+                                onOpenDiff = { path, staged, origPath ->
+                                    navController.navigate(GitDiffView(sessionId, path, staged, origPath))
+                                },
+                                onOpenCommit = { navController.navigate(GitCommitView(sessionId, it)) },
                             )
                         }
                     },
@@ -50,11 +56,21 @@ fun AppNavHost(widthSizeClass: WindowWidthSizeClass) {
                     onBack = { navController.popBackStack() },
                     onDeleted = { navController.popBackStack() },
                     onOpenFile = { navController.navigate(FileViewer(sessionId, it)) },
+                    onOpenDiff = { path, staged, origPath -> navController.navigate(GitDiffView(sessionId, path, staged, origPath)) },
+                    onOpenCommit = { navController.navigate(GitCommitView(sessionId, it)) },
                 )
             }
             composable<FileViewer> { entry ->
                 val route = entry.toRoute<FileViewer>()
                 FileViewerScreen(sessionId = route.sessionId, path = route.path, onBack = { navController.popBackStack() })
+            }
+            composable<GitDiffView> { entry ->
+                val route = entry.toRoute<GitDiffView>()
+                GitDiffScreen(route.sessionId, route.path, route.staged, route.origPath, onBack = { navController.popBackStack() })
+            }
+            composable<GitCommitView> { entry ->
+                val route = entry.toRoute<GitCommitView>()
+                GitCommitScreen(route.sessionId, route.hash, onBack = { navController.popBackStack() })
             }
         }
         PermissionHost()

@@ -89,6 +89,8 @@ fun ChatScreen(
     onBack: (() -> Unit)?,
     onDeleted: () -> Unit,
     onOpenFile: (String) -> Unit = {},
+    onOpenDiff: (path: String, staged: Boolean, origPath: String?) -> Unit = { _, _, _ -> },
+    onOpenCommit: (hash: String) -> Unit = {},
     viewModel: ChatViewModel = viewModel(key = "chat-$sessionId", factory = ChatViewModel.factory(sessionId)),
 ) {
     val session by viewModel.session.collectAsStateWithLifecycle()
@@ -120,7 +122,14 @@ fun ChatScreen(
         onBack = onBack,
         attachments = attachments,
         onRemoveAttachment = viewModel::removeAttachment,
-        sidebar = { WorkspaceSidebar(sessionId = sessionId, onOpenFile = onOpenFile) },
+        sidebar = {
+            WorkspaceSidebar(
+                sessionId = sessionId,
+                onOpenFile = onOpenFile,
+                onOpenDiff = onOpenDiff,
+                onOpenCommit = onOpenCommit,
+            )
+        },
     )
 }
 

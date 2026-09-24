@@ -149,7 +149,7 @@ describe('extension dispatch', () => {
 
   test('hello reports features', async () => {
     const response = await extensions.handle({ id: 1, method: '_lakasir/hello' });
-    assert.deepEqual(response, { jsonrpc: '2.0', id: 1, result: { version: 1, fs: true, git: false } });
+    assert.deepEqual(response, { jsonrpc: '2.0', id: 1, result: { version: 1, fs: true, git: true } });
   });
 
   test('unknown method returns method not found', async () => {

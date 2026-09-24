@@ -5,8 +5,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 
 @Serializable
 data class BridgeFeatures(val version: Int = 0, val fs: Boolean = false, val git: Boolean = false)
@@ -74,11 +76,47 @@ class WorkspaceApi(private val client: AcpClient, val cwd: String) {
         })
     }
 
+    suspend fun gitStatus(): GitStatus = call(LakasirMethods.GIT_STATUS, GitStatus.serializer()) {}
+
+    suspend fun gitDiff(path: String, staged: Boolean, origPath: String? = null): GitDiff =
+        call(LakasirMethods.GIT_DIFF, GitDiff.serializer()) {
+            put("path", path)
+            put("staged", staged)
+            if (origPath != null) put("origPath", origPath)
+        }
+
+    suspend fun gitLog(limit: Int, skip: Int): GitLog = call(LakasirMethods.GIT_LOG, GitLog.serializer()) {
+        put("limit", limit)
+        put("skip", skip)
+    }
+
+    suspend fun gitShow(hash: String): GitCommitDetail = call(LakasirMethods.GIT_SHOW, GitCommitDetail.serializer()) {
+        put("hash", hash)
+    }
+
+    suspend fun gitStage(paths: List<String>) {
+        client.request(LakasirMethods.GIT_STAGE, params { putJsonArray("paths") { paths.forEach { add(it) } } })
+    }
+
+    suspend fun gitUnstage(paths: List<String>) {
+        client.request(LakasirMethods.GIT_UNSTAGE, params { putJsonArray("paths") { paths.forEach { add(it) } } })
+    }
+
+    suspend fun gitCommit(message: String): GitCommitResult =
+        call(LakasirMethods.GIT_COMMIT, GitCommitResult.serializer(), COMMIT_TIMEOUT_MS) {
+            put("message", message)
+        }
+
     private suspend fun <T> call(
         method: String,
         serializer: KSerializer<T>,
+        timeoutMs: Long? = null,
         build: JsonObjectBuilder.() -> Unit,
-    ): T = decode(client.request(method, params(build)), serializer)
+    ): T {
+        val params = params(build)
+        val result = if (timeoutMs == null) client.request(method, params) else client.request(method, params, timeoutMs)
+        return decode(result, serializer)
+    }
 
     private fun params(build: JsonObjectBuilder.() -> Unit): JsonObject = buildJsonObject {
         put("cwd", cwd)
@@ -87,6 +125,7 @@ class WorkspaceApi(private val client: AcpClient, val cwd: String) {
 
     companion object {
         const val HELLO_TIMEOUT_MS = 5_000L
+        const val COMMIT_TIMEOUT_MS = 75_000L
 
         suspend fun hello(client: AcpClient): BridgeFeatures? = try {
             decode(client.request(LakasirMethods.HELLO, buildJsonObject {}, HELLO_TIMEOUT_MS), BridgeFeatures.serializer())

@@ -36,6 +36,9 @@ class WorkspaceRulesTest {
         assertEquals("Not found. It may have been moved or deleted.", rpc(-32012))
         assertEquals("A file or folder with that name already exists", rpc(-32013))
         assertEquals("This bridge doesn't support file access", rpc(-32601))
+        assertEquals("Nothing is staged to commit", rpc(-32020))
+        assertEquals("Not a git repository", rpc(-32022))
+        assertEquals("raw", rpc(-32021))
         assertEquals("raw", rpc(-32000))
         assertEquals("Not connected to the bridge", WorkspaceRepository.errorMessage(AcpException.Disconnected()))
     }

@@ -1,4 +1,5 @@
 import { ErrorCode, RpcError, toRpcError } from './errors.js';
+import { createGitHandlers, gitAvailable } from './git.js';
 import { createWorkspaceHandlers } from './workspace.js';
 
 export const EXTENSION_PREFIX = '_lakasir/';
@@ -10,14 +11,22 @@ export function isExtensionMethod(method) {
 
 export function createExtensions(options = {}) {
   const workspace = createWorkspaceHandlers(options);
+  const git = createGitHandlers(options);
   const methods = {
-    '_lakasir/hello': async () => ({ version: EXTENSION_VERSION, fs: true, git: false }),
+    '_lakasir/hello': async () => ({ version: EXTENSION_VERSION, fs: true, git: await gitAvailable() }),
     '_lakasir/fs/list': workspace.list,
     '_lakasir/fs/read': workspace.read,
     '_lakasir/fs/write': workspace.write,
     '_lakasir/fs/create': workspace.create,
     '_lakasir/fs/rename': workspace.rename,
     '_lakasir/fs/delete': workspace.delete,
+    '_lakasir/git/status': git.status,
+    '_lakasir/git/diff': git.diff,
+    '_lakasir/git/log': git.log,
+    '_lakasir/git/show': git.show,
+    '_lakasir/git/stage': git.stage,
+    '_lakasir/git/unstage': git.unstage,
+    '_lakasir/git/commit': git.commit,
   };
 
   return {

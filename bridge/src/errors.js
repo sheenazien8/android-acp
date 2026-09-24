@@ -6,6 +6,9 @@ export const ErrorCode = {
   OUTSIDE_WORKSPACE: -32011,
   NOT_FOUND: -32012,
   ALREADY_EXISTS: -32013,
+  NOTHING_STAGED: -32020,
+  GIT_ERROR: -32021,
+  NOT_A_REPO: -32022,
 };
 
 export class RpcError extends Error {

@@ -30,14 +30,17 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -61,6 +64,13 @@ import com.lakasir.acp.acp.FsEntry
 import com.lakasir.acp.data.repository.WorkspaceAvailability
 import com.lakasir.acp.ui.components.EmptyState
 import com.lakasir.acp.ui.theme.AcpTheme
+import com.lakasir.acp.ui.workspace.git.GitActions
+import com.lakasir.acp.ui.workspace.git.GitBadgeText
+import com.lakasir.acp.ui.workspace.git.GitDecorations
+import com.lakasir.acp.ui.workspace.git.GitPane
+import com.lakasir.acp.ui.workspace.git.GitViewModel
+
+enum class WorkspaceTab(val label: String) { Files("Files"), Git("Git") }
 
 private sealed interface WorkspaceDialog {
     data class Create(val parent: String, val directory: Boolean) : WorkspaceDialog
@@ -83,18 +93,44 @@ fun WorkspaceSidebar(
     sessionId: Long,
     onOpenFile: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenDiff: (path: String, staged: Boolean, origPath: String?) -> Unit = { _, _, _ -> },
+    onOpenCommit: (hash: String) -> Unit = {},
     viewModel: WorkspaceViewModel = viewModel(key = "workspace-$sessionId", factory = WorkspaceViewModel.factory(sessionId)),
+    gitViewModel: GitViewModel = viewModel(key = "git-$sessionId", factory = GitViewModel.factory(sessionId)),
 ) {
     val availability by viewModel.availability.collectAsStateWithLifecycle()
     val root by viewModel.root.collectAsStateWithLifecycle()
     val rows by viewModel.rows.collectAsStateWithLifecycle()
+    val gitEnabled by gitViewModel.enabled.collectAsStateWithLifecycle()
+    val gitState by gitViewModel.state.collectAsStateWithLifecycle()
+    val decorations by gitViewModel.decorations.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val clipboard = LocalClipboardManager.current
     var dialog by remember { mutableStateOf<WorkspaceDialog?>(null) }
+    var tab by rememberSaveable { mutableStateOf(WorkspaceTab.Files) }
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
     }
+    LaunchedEffect(gitViewModel) {
+        gitViewModel.messages.collect { snackbarHostState.showSnackbar(it) }
+    }
+    LaunchedEffect(tab) {
+        if (tab == WorkspaceTab.Git) gitViewModel.refresh()
+    }
+
+    val gitActions = GitActions(
+        onRefresh = gitViewModel::refresh,
+        onOpenDiff = { file, staged -> onOpenDiff(file.path, staged, file.origPath.takeIf { staged }) },
+        onOpenCommit = { onOpenCommit(it.hash) },
+        onStage = gitViewModel::stage,
+        onUnstage = gitViewModel::unstage,
+        onStageAll = gitViewModel::stageAll,
+        onUnstageAll = gitViewModel::unstageAll,
+        onMessageChange = gitViewModel::updateMessage,
+        onCommit = gitViewModel::commit,
+        onLoadMore = gitViewModel::loadMoreLog,
+    )
 
     val actions = FileActions(
         onOpen = { onOpenFile(it.path) },
@@ -112,7 +148,14 @@ fun WorkspaceSidebar(
             root = root,
             rows = rows,
             actions = actions,
-            onRefresh = viewModel::refresh,
+            onRefresh = {
+                viewModel.refresh()
+                gitViewModel.refresh()
+            },
+            decorations = decorations,
+            tab = tab,
+            onTabChange = { tab = it },
+            gitPane = if (gitEnabled) { { GitPane(gitState, gitActions) } } else null,
         )
         SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
@@ -162,6 +205,7 @@ fun WorkspaceSidebar(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkspaceSidebarContent(
     availability: WorkspaceAvailability,
@@ -170,15 +214,34 @@ fun WorkspaceSidebarContent(
     actions: FileActions,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
+    decorations: GitDecorations = GitDecorations.EMPTY,
+    tab: WorkspaceTab = WorkspaceTab.Files,
+    onTabChange: (WorkspaceTab) -> Unit = {},
+    gitPane: (@Composable () -> Unit)? = null,
 ) {
+    val ready = availability is WorkspaceAvailability.Ready
+    val showGit = ready && gitPane != null && tab == WorkspaceTab.Git
     Column(modifier.fillMaxSize()) {
         WorkspaceHeader(
             cwd = (availability as? WorkspaceAvailability.Ready)?.cwd,
-            ready = availability is WorkspaceAvailability.Ready,
+            ready = ready,
+            showCreate = !showGit,
             onCreate = { directory -> actions.onCreate(WorkspacePaths.ROOT, directory) },
             onRefresh = onRefresh,
         )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        if (ready && gitPane != null) {
+            SecondaryTabRow(selectedTabIndex = tab.ordinal, containerColor = MaterialTheme.colorScheme.surface) {
+                WorkspaceTab.entries.forEach { entry ->
+                    Tab(selected = tab == entry, onClick = { onTabChange(entry) }, text = { Text(entry.label) })
+                }
+            }
+        } else {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        }
+        if (showGit) {
+            gitPane?.invoke()
+            return@Column
+        }
         when (availability) {
             WorkspaceAvailability.Offline -> EmptyState("Offline", "Connect to this bridge to browse its files.")
             WorkspaceAvailability.Checking -> CenteredProgress()
@@ -200,7 +263,7 @@ fun WorkspaceSidebarContent(
                 else -> LazyColumn(Modifier.fillMaxSize()) {
                     items(rows, key = { it.key }, contentType = { it::class }) { row ->
                         when (row) {
-                            is TreeRow.Entry -> FileTreeRow(row, actions)
+                            is TreeRow.Entry -> FileTreeRow(row, actions, decorations.badgeFor(row.entry.path, row.entry.isDirectory))
                             is TreeRow.Note -> TreeNoteRow(row)
                         }
                     }
@@ -211,7 +274,13 @@ fun WorkspaceSidebarContent(
 }
 
 @Composable
-private fun WorkspaceHeader(cwd: String?, ready: Boolean, onCreate: (directory: Boolean) -> Unit, onRefresh: () -> Unit) {
+private fun WorkspaceHeader(
+    cwd: String?,
+    ready: Boolean,
+    showCreate: Boolean,
+    onCreate: (directory: Boolean) -> Unit,
+    onRefresh: () -> Unit,
+) {
     var menuExpanded by remember { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
@@ -229,7 +298,7 @@ private fun WorkspaceHeader(cwd: String?, ready: Boolean, onCreate: (directory: 
                 )
             }
         }
-        Box {
+        if (showCreate) Box {
             IconButton(onClick = { menuExpanded = true }, enabled = ready) {
                 Icon(Icons.Filled.Add, contentDescription = "New file or folder")
             }
@@ -252,7 +321,7 @@ private fun WorkspaceHeader(cwd: String?, ready: Boolean, onCreate: (directory: 
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FileTreeRow(row: TreeRow.Entry, actions: FileActions) {
+private fun FileTreeRow(row: TreeRow.Entry, actions: FileActions, badge: String?) {
     val entry = row.entry
     var menuExpanded by remember { mutableStateOf(false) }
     Box {
@@ -298,6 +367,7 @@ private fun FileTreeRow(row: TreeRow.Entry, actions: FileActions) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (badge != null) GitBadgeText(badge, Modifier.padding(horizontal = 6.dp))
             if (entry.isFile) {
                 Text(
                     WorkspacePaths.formatSize(entry.size),

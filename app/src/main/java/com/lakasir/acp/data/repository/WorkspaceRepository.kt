@@ -119,6 +119,8 @@ class WorkspaceRepository(private val repository: AcpRepository) {
                 LakasirErrorCode.OUTSIDE_WORKSPACE -> "That path is outside the workspace"
                 LakasirErrorCode.NOT_FOUND -> "Not found. It may have been moved or deleted."
                 LakasirErrorCode.ALREADY_EXISTS -> "A file or folder with that name already exists"
+                LakasirErrorCode.NOTHING_STAGED -> "Nothing is staged to commit"
+                LakasirErrorCode.NOT_A_REPO -> "Not a git repository"
                 JsonRpcErrorCode.METHOD_NOT_FOUND -> "This bridge doesn't support file access"
                 else -> e.error.message
             }

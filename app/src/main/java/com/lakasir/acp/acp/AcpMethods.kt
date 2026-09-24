@@ -63,6 +63,13 @@ object LakasirMethods {
     const val FS_CREATE = "_lakasir/fs/create"
     const val FS_RENAME = "_lakasir/fs/rename"
     const val FS_DELETE = "_lakasir/fs/delete"
+    const val GIT_STATUS = "_lakasir/git/status"
+    const val GIT_DIFF = "_lakasir/git/diff"
+    const val GIT_LOG = "_lakasir/git/log"
+    const val GIT_SHOW = "_lakasir/git/show"
+    const val GIT_STAGE = "_lakasir/git/stage"
+    const val GIT_UNSTAGE = "_lakasir/git/unstage"
+    const val GIT_COMMIT = "_lakasir/git/commit"
 }
 
 object LakasirErrorCode {
@@ -70,6 +77,9 @@ object LakasirErrorCode {
     const val OUTSIDE_WORKSPACE = -32011
     const val NOT_FOUND = -32012
     const val ALREADY_EXISTS = -32013
+    const val NOTHING_STAGED = -32020
+    const val GIT_ERROR = -32021
+    const val NOT_A_REPO = -32022
 }
 
 object FsEntryType {

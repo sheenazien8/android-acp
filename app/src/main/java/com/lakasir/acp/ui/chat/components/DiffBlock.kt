@@ -26,7 +26,7 @@ import com.lakasir.acp.ui.theme.AcpTheme
 private const val MAX_DIFF_LINES = 300
 
 @Composable
-fun DiffBlock(diff: DiffState, modifier: Modifier = Modifier) {
+fun DiffBlock(diff: DiffState, modifier: Modifier = Modifier, maxLines: Int = MAX_DIFF_LINES) {
     val lines = remember(diff) { LineDiff.compute(diff.oldText, diff.newText) }
     val added = lines.count { it.type == DiffLineType.ADDED }
     val removed = lines.count { it.type == DiffLineType.REMOVED }
@@ -50,7 +50,7 @@ fun DiffBlock(diff: DiffState, modifier: Modifier = Modifier) {
             Text(" −$removed", style = AcpTheme.code.codeSmall, color = extended.diffRemoved)
         }
         Column(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 6.dp)) {
-            lines.take(MAX_DIFF_LINES).forEach { line ->
+            lines.take(maxLines).forEach { line ->
                 val (prefix, background, color) = when (line.type) {
                     DiffLineType.ADDED -> Triple("+", extended.diffAddedBackground, extended.diffAdded)
                     DiffLineType.REMOVED -> Triple("-", extended.diffRemovedBackground, extended.diffRemoved)
@@ -61,9 +61,9 @@ fun DiffBlock(diff: DiffState, modifier: Modifier = Modifier) {
                     Text(line.text, style = AcpTheme.code.codeSmall, color = MaterialTheme.colorScheme.onSurface, softWrap = false)
                 }
             }
-            if (lines.size > MAX_DIFF_LINES) {
+            if (lines.size > maxLines) {
                 Text(
-                    "${lines.size - MAX_DIFF_LINES} more lines",
+                    "${lines.size - maxLines} more lines",
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
