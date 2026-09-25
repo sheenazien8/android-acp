@@ -20,24 +20,24 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import com.lakasir.acp.ui.chat.TextSegment
-import com.lakasir.acp.ui.chat.TextSegments
+import com.lakasir.acp.ui.markdown.MarkdownBlock
+import com.lakasir.acp.ui.markdown.MarkdownParser
+import com.lakasir.acp.ui.markdown.MdBlock
+import com.lakasir.acp.ui.markdown.rememberInlineStyles
 
 @Composable
 fun AgentText(text: String, streaming: Boolean, modifier: Modifier = Modifier) {
-    val segments = remember(text) { TextSegments.split(text) }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        segments.forEachIndexed { index, segment ->
-            val isLast = index == segments.lastIndex
-            when (segment) {
-                is TextSegment.Prose -> SelectionContainer {
-                    if (streaming && isLast) {
-                        StreamingText(segment.text, MaterialTheme.typography.bodyMedium, MaterialTheme.colorScheme.onSurface)
-                    } else {
-                        Text(segment.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    }
+    val blocks = remember(text) { MarkdownParser.parse(text) }
+    val styles = rememberInlineStyles()
+    SelectionContainer {
+        Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            blocks.forEachIndexed { index, block ->
+                val isLast = index == blocks.lastIndex
+                if (streaming && isLast && block is MdBlock.Paragraph) {
+                    StreamingText(block.text, MaterialTheme.typography.bodyMedium, MaterialTheme.colorScheme.onSurface)
+                } else {
+                    MarkdownBlock(block, styles)
                 }
-                is TextSegment.Code -> CodeBox(segment.text, caption = segment.language)
             }
         }
     }

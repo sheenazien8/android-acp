@@ -42,7 +42,7 @@ import com.lakasir.acp.ui.theme.AcpTheme
 @Composable
 fun MarkdownView(text: String, modifier: Modifier = Modifier) {
     val blocks = remember(text) { MarkdownParser.parse(text) }
-    val styles = inlineStyles()
+    val styles = rememberInlineStyles()
     SelectionContainer(modifier) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -55,7 +55,7 @@ fun MarkdownView(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun inlineStyles(): InlineStyles {
+fun rememberInlineStyles(): InlineStyles {
     val colors = MaterialTheme.colorScheme
     val codeStyle = AcpTheme.code.codeSmall
     val accent = AcpTheme.extended.accentText
@@ -73,7 +73,7 @@ private fun inlineStyles(): InlineStyles {
 }
 
 @Composable
-private fun MarkdownBlock(block: MdBlock, styles: InlineStyles) {
+fun MarkdownBlock(block: MdBlock, styles: InlineStyles) {
     val body = MaterialTheme.typography.bodyMedium
     val onSurface = MaterialTheme.colorScheme.onSurface
     when (block) {

@@ -38,6 +38,25 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 | 17 | [Fix offline indicator](17-fix-offline-indicator.md) | 05, 10 |
 | 18 | [Agent control](18-agent-control.md) | 03, 05, 08 |
 | 20 | [Connection switcher](20-connection-switcher.md) | 07, 10 |
+| 21 | [TLS certificate pinning](21-tls-certificate-pinning.md) — Play blocker | 16 |
+| 22 | [Foreground service type](22-foreground-service-type.md) — Play blocker | 11 |
+| 23 | [Target SDK 36](23-target-sdk-36.md) — Play blocker | — |
+| 24 | [App icon & store assets](24-app-icon-and-store-assets.md) — Play blocker | 35 |
+| 25 | [Release build](25-release-build.md) — Play blocker | 23 |
+| 26 | [Privacy policy & Data safety](26-privacy-policy-data-safety.md) — Play blocker | 21 |
+| 27 | [Encrypt auth token](27-encrypt-auth-token.md) | 16 |
+| 28 | [Streaming write batching & paging](28-streaming-write-batching.md) | 08 |
+| 29 | [Message storage retention](29-message-storage-retention.md) | 04 |
+| 30 | [Session preview column](30-session-preview-column.md) | 31 |
+| 31 | [Migration tests](31-migration-tests.md) | 04 |
+| 32 | [Split AcpRepository](32-split-acp-repository.md) | 28 |
+| 33 | [CI pipeline](33-ci-pipeline.md) | 25 |
+| 34 | [UI tests & accessibility](34-ui-tests-and-accessibility.md) | 31 |
+| 35 | [First-run & demo mode](35-first-run-and-demo-mode.md) | 03 |
+| 36 | [Settings screen](36-settings-screen.md) | 26, 29 |
+| 37 | [Publish bridge to npm](37-publish-bridge-npm.md) | 21 |
+| 38 | [Read-only Git for v1](38-git-read-only-v1.md) | 15 |
+| 39 | [Play release checklist](39-play-release-checklist.md) | 21–38 |
 
 ## Assumptions
 - `cwd` (absolute path on the bridge machine) is stored per `ConnectionProfile` (confirmed by user), because ACP `session/new` requires it
@@ -78,5 +97,6 @@ Deliver the MVP as a sequence of feature plans. Each one is built, compiled and 
 - Plan 17 pending (offline indicator fix)
 - Plan 18 implemented (model picker, context-usage bar, slash-command autocomplete in chat); 148 JVM unit tests + 32 bridge tests passing
 - Plan 20 implemented (connection switcher drawer on the sessions screen)
+- Plans 21–39 written (Play Store readiness: blockers 21–26, scalability 28–32, quality 27/33/34, v1 features 35–38, release run 39); release order is in plan 39 Notes
 - Debug APK installed over adb on a Pixel 7a (Android 15); the app launches and the Connections screen renders
 - Not yet verified: end-to-end against a real ACP bridge (connect → initialize → new session → prompt streaming → tool calls → permission → cancel)
